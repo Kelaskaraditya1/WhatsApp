@@ -6,13 +6,18 @@ import java.util.Random;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.starkindustries.whatsapp_backend.authentication.dto.request.LoginRequest;
 import com.starkindustries.whatsapp_backend.authentication.dto.request.SendOtpRequest;
 import com.starkindustries.whatsapp_backend.authentication.dto.request.SignupRequest;
@@ -62,19 +67,52 @@ public class AuthenticationController {
 
     }
 
-    @PostMapping("/signup")
-    public ResponseEntity<?> signup(@RequestBody SignupRequest signupRequest){
+@PostMapping(value = "/signup", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+public ResponseEntity<?> signup(
+    @RequestPart("data") String jsonData,     // JSON as string  
+        @RequestParam(value = "file", required = false) MultipartFile profilePic
+) {
+    // Parse JSON → Your existing SignupRequest
+    ObjectMapper mapper = new ObjectMapper();
 
-        SignupResponse signupResponse = this.authenticationService.signupWithUsrnameAndPassword(signupRequest, "Bearer");
-        return ResponseEntity.ok(signupResponse);
+    try{
+    SignupRequest signupRequest = mapper.readValue(jsonData, SignupRequest.class);
 
+        if(signupRequest == null)
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Signup Request is null");
+    
+    SignupResponse signupResponse = this.authenticationService.signupWithUsrnameAndPassword(
+        signupRequest, "Bearer", profilePic
+    );
+
+    if(signupResponse!=null)
+        return ResponseEntity.status(HttpStatus.OK).body(signupResponse);
+
+    }catch(Exception e){
+        log.error("Signup Error:"+e.getMessage());
+        throw new CustomException(HttpStatus.BAD_REQUEST.value(),e.getMessage());
     }
+
+    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to Signup");
+
+}
+
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest){
 
+        if(loginRequest==null)
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Request Body is null!!");
+        else if(loginRequest.getUsername()==null || loginRequest.getUsername().isEmpty() || loginRequest.getUsername().isEmpty())
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Enter proper Username");
+        else if(loginRequest.getPassword()== null || loginRequest.getPassword().isBlank() || loginRequest.getPassword().isEmpty())
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Enter proper password");
+
             LoginResponse loginResponse = this.authenticationService.loginWithUsernameAndPassword(loginRequest);
-            return ResponseEntity.ok(loginResponse);
+            if(loginResponse!=null)
+                return ResponseEntity.status(HttpStatus.OK).body(loginResponse);
+            else
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Invalid Username or Password");
 
     }
 

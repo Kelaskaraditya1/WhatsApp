@@ -1,5 +1,7 @@
 package com.starkindustries.whatsapp_backend.authentication.service;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +14,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.starkindustries.whatsapp_backend.authentication.dto.request.LoginRequest;
 import com.starkindustries.whatsapp_backend.authentication.dto.request.SignupRequest;
@@ -21,6 +24,7 @@ import com.starkindustries.whatsapp_backend.authentication.enums.AuthType;
 import com.starkindustries.whatsapp_backend.authentication.model.Users;
 import com.starkindustries.whatsapp_backend.authentication.repository.AuthenticationRepository;
 import com.starkindustries.whatsapp_backend.authentication.utility.AuthenticationUtility;
+import com.starkindustries.whatsapp_backend.configurations.CloudinaryConfiguration;
 import com.starkindustries.whatsapp_backend.exceptions.CustomException;
 
 import lombok.extern.slf4j.Slf4j;
@@ -46,9 +50,10 @@ public class AuthenticationService {
     @Autowired
     public AuthenticationUtility authenticationUtility;
 
-    public SignupResponse signupWithUsrnameAndPassword(SignupRequest signupRequest,String tokenType){
+    @Autowired
+    public CloudinaryConfiguration cloudinaryConfiguration;
 
-            if(signupRequest!=null){
+    public SignupResponse signupWithUsrnameAndPassword(SignupRequest signupRequest,String tokenType, MultipartFile multipartFile){
 
                 if(this.authenticationRepository.existsByContact(signupRequest.getContact())){
                     log.error("Contact already exist");
@@ -70,6 +75,7 @@ public class AuthenticationService {
                 .name(signupRequest.getName())
                 .email(signupRequest.getEmail())
                 .contact(signupRequest.getContact())
+                .profilePicUrl(multipartFile!=null? uploadToCloudinary(multipartFile):null)
                 .authType(AuthType.EMAIL)
                 .providerId(signupRequest.getProviderId())
                 .username(signupRequest.getUsername())
@@ -83,18 +89,11 @@ public class AuthenticationService {
                 .jwtToken(this.jwtService.generateJwtToken(users))
                 .tokenType(tokenType)
                 .build();
-                
-            }else{
-                log.error("Signup request is null");
-                throw new CustomException(HttpStatus.BAD_REQUEST.value(),"Signup request is null");
-            }
     }
 
     public LoginResponse loginWithUsernameAndPassword(LoginRequest loginRequest){
 
-        try{
 
-            if(loginRequest!=null){
 
                 Users users = this.authenticationRepository.findByUsernameOrEmail(loginRequest.getUsername(),loginRequest.getUsername()).get();
 
@@ -115,18 +114,8 @@ public class AuthenticationService {
                     }
                 }else{
                     log.error("User with username or email "+loginRequest.getUsername()+" does not exist");
-                    throw new CustomException(HttpStatus.BAD_REQUEST.value(),"User with username or email "+loginRequest.getUsername()+" does not exist");
+                    throw new CustomException(HttpStatus.BAD_REQUEST.value(),"Invalid username or password");
                 }
-
-            }else{
-                log.error("Login request is null");
-                    throw new CustomException(HttpStatus.BAD_REQUEST.value(),"LoginRequest is null");
-            }
-
-        }catch(Exception e){
-            log.error("Error: "+e.getMessage());
-            e.printStackTrace();
-        }
 
         return null;
 
@@ -173,7 +162,7 @@ public class AuthenticationService {
             log.info("User does not exist , Signing up");
             SignupRequest signupRequest = this.authenticationUtility.getSignupRequest(oAuth2User, registrationId);
             log.info("Signup Request: "+signupRequest);
-            SignupResponse signupResponse = signupWithUsrnameAndPassword(signupRequest,"OAuth2");
+            SignupResponse signupResponse = signupWithUsrnameAndPassword(signupRequest,"OAuth2",null);
             users = signupResponse.getUsers();
         }
 
@@ -184,6 +173,62 @@ public class AuthenticationService {
         .build();
 
         return ResponseEntity.status(HttpStatus.OK).body(loginResponse);
+
+
+    }
+
+    public String uploadToCloudinary(MultipartFile multipartFile){
+
+        Map data = new HashMap<>();
+
+        try{
+
+            String downloadUrl = this.cloudinaryConfiguration.gerCloudinaryConfiguration().uploader().upload(multipartFile.getBytes(), data)
+            .get("secure_url")
+            .toString();
+            if(downloadUrl!=null && (downloadUrl.startsWith("http://") || downloadUrl.startsWith("https://")))
+                return downloadUrl;
+            else{
+                log.error("failed to upload download url, might be null or does not start with http or https");
+                throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR.value(),"failed to upload download url, might be null or does not start with http or https");
+            }
+
+        }catch(Exception e){
+            log.error("Cloudinary Error: "+e.getMessage());
+            e.printStackTrace();
+        }
+
+        return null;
+
+    }
+
+    public Users uploadProfilePic(MultipartFile multipartFile, String userId){
+
+        Users users = this.authenticationRepository.findAll()
+        .stream()
+        .filter(
+            user-> user.getUserId().equals(userId)
+        ).findFirst()
+        .orElse(null);
+
+        if(users != null){
+
+            String profilePicUrl = uploadToCloudinary(multipartFile);
+
+            if(profilePicUrl!=null){
+                users.setProfilePicUrl(profilePicUrl);
+                this.authenticationRepository.save(users);
+                return users;
+            }else{
+                log.error("profile pic url is null!!");
+                throw new CustomException(HttpStatus.INTERNAL_SERVER_ERROR.value(),"profile pic url is null!!");
+            }
+
+        
+        }else{
+            log.error("User with userId: "+userId+" does not exist.");
+            throw new CustomException(HttpStatus.BAD_REQUEST.value(),"User with userId: "+userId+" does not exist.");
+        }
 
 
     }

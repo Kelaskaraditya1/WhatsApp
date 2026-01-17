@@ -24,6 +24,7 @@ private String userId;
 private String name;
 private String email;
 private String contact;
+private String profilePicUrl;
 private AuthType authType;
 private String username;
 private String providerId;
