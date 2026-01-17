@@ -1,1 +1,7 @@
+# Maven Build (CRITICAL)
+whatsapp-backend/target/
+**/target/
+target/
+*.jar
+*.war
 .env
