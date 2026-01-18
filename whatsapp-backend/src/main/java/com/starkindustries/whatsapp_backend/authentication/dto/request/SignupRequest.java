@@ -11,6 +11,7 @@ public class SignupRequest {
     private String name;
     private String email;
     private String contact;
+    private String profilePicUrl;
     private AuthType authType;
     private String providerId;
     private String username;

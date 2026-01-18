@@ -13,7 +13,7 @@ import com.starkindustries.whatsapp_backend.authentication.model.Otp;
 import com.starkindustries.whatsapp_backend.authentication.model.Users;
 import com.starkindustries.whatsapp_backend.authentication.repository.AuthenticationRepository;
 import com.starkindustries.whatsapp_backend.exceptions.CustomException;
-
+import java.util.*;
 import lombok.extern.slf4j.Slf4j;
 
 @Service
@@ -61,7 +61,7 @@ public class OtpService {
             verifyOtpRequest.getPhoneNumber()!=null && !verifyOtpRequest.getPhoneNumber().isEmpty()
         ){
 
-            Otp otp = otpRecords.get(verifyOtpRequest.getPhoneNumber());
+            Otp otp = otpRecords.get("+91"+verifyOtpRequest.getPhoneNumber());
 
             if(otp!=null){
 
@@ -73,16 +73,15 @@ public class OtpService {
                     log.error("Invalid Otp");
                     throw new CustomException(HttpStatus.SC_BAD_REQUEST, "Invalid otp");
                 }else{
+                    log.info("Phone number: "+otp.getPhoneNumber());
                     Users users = this.authenticationRepository.findAll()
                     .stream()
-                    .filter(
-                        user->user.getContact().equals(otp.getPhoneNumber().substring(3))
-                    )
+                .filter(user -> Objects.equals(user.getContact(), otp.getPhoneNumber().substring(3))) 
                     .findFirst()
                     .orElse(null);
 
                     if(users!=null){
-                        otpRecords.remove(verifyOtpRequest.getPhoneNumber());
+                        otpRecords.remove("+91"+verifyOtpRequest.getPhoneNumber());
                         return VerifyOtpResponse.builder()
                         .users(users)
                         .jwtToken(this.jwtService.generateJwtToken(users))
@@ -108,6 +107,28 @@ public class OtpService {
         }
 
         return null;
+    }
+
+    public boolean verifyLoginOtp(VerifyOtpRequest verifyOtpRequest){
+
+        Otp otp = otpRecords.get("+91"+verifyOtpRequest.getPhoneNumber());
+
+        if(otp==null){
+            log.error("Otp doesnot exist for this Phone number");
+            throw new CustomException(HttpStatus.SC_BAD_REQUEST, "Otp doesnot exist for this Phone number");
+        }else if(otp.isOtpExpired()){
+            log.error("Otp is Expired");
+            otpRecords.remove(verifyOtpRequest.getPhoneNumber());
+            throw new CustomException(HttpStatus.SC_BAD_REQUEST, "Otp is Expired");
+        }else if(!verifyOtpRequest.getOtp().equals(otp.getOtp())){
+            log.error("Invalid Otp");
+            return false;
+        }
+
+        otpRecords.remove("+91"+verifyOtpRequest.getPhoneNumber());
+        return true;
+
+
     }
 
     

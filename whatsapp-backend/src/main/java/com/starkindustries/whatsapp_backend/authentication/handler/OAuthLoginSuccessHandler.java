@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
@@ -28,7 +29,8 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
     @Autowired
     public AuthenticationUtility authenticationUtility;
 
-        private static final String FRONTEND_CALLBACK_URL = "http://localhost:3000/oauth-callback";
+    @Value("${frontend.callback.url}")
+    private String frontendCallbackUrl;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
@@ -47,19 +49,19 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
                 String jwtToken = loginResponse.getBody().getJwtToken();
                 
                 // Redirect to React app with token as query parameter
-                String redirectUrl = FRONTEND_CALLBACK_URL + "?token=" + URLEncoder.encode(jwtToken, StandardCharsets.UTF_8);
-                log.info("Redirecting to frontend: {}", FRONTEND_CALLBACK_URL);
+                String redirectUrl = frontendCallbackUrl + "?token=" + URLEncoder.encode(jwtToken, StandardCharsets.UTF_8);
+                log.info("Redirecting to frontend: {}", frontendCallbackUrl);
                 
                 response.sendRedirect(redirectUrl);
             } else {
                 log.error("OAuth2 login failed: No JWT token generated");
-                response.sendRedirect(FRONTEND_CALLBACK_URL + "?error=no_token");
+                response.sendRedirect(frontendCallbackUrl + "?error=no_token");
             }
             
         } catch (Exception e) {
             log.error("OAuth2 login error: {}", e.getMessage(), e);
             String errorMessage = URLEncoder.encode(e.getMessage(), StandardCharsets.UTF_8);
-            response.sendRedirect(FRONTEND_CALLBACK_URL + "?error=oauth_failed&message=" + errorMessage);
+            response.sendRedirect(frontendCallbackUrl + "?error=oauth_failed&message=" + errorMessage);
         }
 
 

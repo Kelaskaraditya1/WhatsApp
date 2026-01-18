@@ -6,6 +6,7 @@ import java.util.Random;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -26,6 +27,7 @@ import com.starkindustries.whatsapp_backend.authentication.dto.response.LoginRes
 import com.starkindustries.whatsapp_backend.authentication.dto.response.SendOtpResponse;
 import com.starkindustries.whatsapp_backend.authentication.dto.response.SignupResponse;
 import com.starkindustries.whatsapp_backend.authentication.dto.response.VerifyOtpResponse;
+import com.starkindustries.whatsapp_backend.authentication.enums.AuthType;
 import com.starkindustries.whatsapp_backend.authentication.model.UserPrinciple;
 import com.starkindustries.whatsapp_backend.authentication.service.AuthenticationService;
 import com.starkindustries.whatsapp_backend.authentication.service.JwtService;
@@ -82,7 +84,7 @@ public ResponseEntity<?> signup(
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Signup Request is null");
     
     SignupResponse signupResponse = this.authenticationService.signupWithUsrnameAndPassword(
-        signupRequest, "Bearer", profilePic
+        signupRequest, "Bearer", profilePic,AuthType.EMAIL
     );
 
     if(signupResponse!=null)
@@ -129,18 +131,47 @@ public ResponseEntity<?> signup(
     @PostMapping("/send/otp")
     public ResponseEntity<?> sendOtp(@RequestBody SendOtpRequest sendOtpRequest){
 
-        String otp = String.valueOf((100000L + new Random().nextLong(9000000L)));
-        SendOtpResponse sendOtpResponse = this.twilioSmsService.sendOtp(sendOtpRequest.getPhoneNumber(),otp);
+        String otp = String.valueOf((100000L + new Random().nextLong(900000L)));
+        SendOtpResponse sendOtpResponse = this.twilioSmsService.sendOtp("+91"+sendOtpRequest.getPhoneNumber(),otp);
 
         return ResponseEntity.ok(sendOtpResponse);
 
     }
 
-    @PostMapping("/verify/otp")
+    @PostMapping("/verify/login/otp")
     public ResponseEntity<?> verifyOtp(@RequestBody VerifyOtpRequest verifyOtpRequesty){
 
         VerifyOtpResponse verifyOtpResponse = this.otpService.verifyOtp(verifyOtpRequesty);
         return ResponseEntity.ok(verifyOtpResponse);
+    }
+
+
+    @PostMapping("/verify/otp")
+    public ResponseEntity<?> verifyLoginOtp(
+        @RequestBody VerifyOtpRequest verifyOtpRequest
+    ){
+
+        if(verifyOtpRequest==null)
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Verify Request is null");
+        else if(verifyOtpRequest.getPhoneNumber()==null || verifyOtpRequest.getPhoneNumber().isEmpty() || verifyOtpRequest.getPhoneNumber().isBlank())
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Enter Valid Phone number");
+        else if(verifyOtpRequest.getOtp()==null || verifyOtpRequest.getOtp().isEmpty() || verifyOtpRequest.getOtp().isBlank())
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Enter Valid Otp");
+
+        if(this.otpService.verifyLoginOtp(verifyOtpRequest)){
+            Map<String,Object> response = new HashMap<>();
+            response.put(Keys.STATUS,true);
+            response.put(Keys.MESSAGE, "Phone number verified Sucessfully");
+            return ResponseEntity.status(HttpStatus.OK).body(response);
+        }
+        else{
+            Map<String,Object> response = new HashMap<>();
+            response.put(Keys.STATUS,false);
+            response.put(Keys.MESSAGE, "Failed to verify Phone number, try again later.");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+            
+
     }
 
     

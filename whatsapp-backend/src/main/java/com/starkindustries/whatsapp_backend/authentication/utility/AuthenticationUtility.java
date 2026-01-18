@@ -6,7 +6,10 @@ import org.springframework.stereotype.Component;
 import com.starkindustries.whatsapp_backend.authentication.dto.request.SignupRequest;
 import com.starkindustries.whatsapp_backend.authentication.enums.AuthType;
 
+import lombok.extern.slf4j.Slf4j;
+
 @Component
+@Slf4j
 public class AuthenticationUtility {
 
     public AuthType getAuthType(String registrationId){
@@ -40,12 +43,16 @@ public class AuthenticationUtility {
         switch(registrationId.toLowerCase()){
 
             case "google" -> {
+                
+                log.info("Profile pic url:"+oAuth2User.getAttribute("picture").toString());
+
                 signupRequest = SignupRequest.builder()
                 .name(name)
                 .email(email)
                 .contact(null)
                 .authType(AuthType.GOOGLE)
                 .providerId(oAuth2User.getAttribute("sub"))
+                .profilePicUrl(oAuth2User.getAttribute("picture").toString())
                 .username(username)
                 .password(null)
                 .build();

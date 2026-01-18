@@ -2,6 +2,7 @@ package com.starkindustries.whatsapp_backend.authentication.service;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,7 +54,7 @@ public class AuthenticationService {
     @Autowired
     public CloudinaryConfiguration cloudinaryConfiguration;
 
-    public SignupResponse signupWithUsrnameAndPassword(SignupRequest signupRequest,String tokenType, MultipartFile multipartFile){
+    public SignupResponse signupWithUsrnameAndPassword(SignupRequest signupRequest,String tokenType, MultipartFile multipartFile, AuthType authType){
 
                 if(this.authenticationRepository.existsByContact(signupRequest.getContact())){
                     log.error("Contact already exist");
@@ -70,13 +71,20 @@ public class AuthenticationService {
                     throw new CustomException(HttpStatus.BAD_REQUEST.value(),"Username already exist");
                 }
 
+                String profilePicUrl=null;
+
+                if(multipartFile!=null && (signupRequest.getProfilePicUrl()==null || signupRequest.getProfilePicUrl().isEmpty() || signupRequest.getProfilePicUrl().isBlank()))
+                    profilePicUrl= uploadToCloudinary(multipartFile);
+                else if(authType!=AuthType.EMAIL && signupRequest.getProfilePicUrl()!=null && !signupRequest.getProfilePicUrl().isEmpty() && !signupRequest.getProfilePicUrl().isBlank())
+                    profilePicUrl=signupRequest.getProfilePicUrl();
+
                 Users users = Users.builder()
                 .userId(UUID.randomUUID().toString())
                 .name(signupRequest.getName())
                 .email(signupRequest.getEmail())
                 .contact(signupRequest.getContact())
-                .profilePicUrl(multipartFile!=null? uploadToCloudinary(multipartFile):null)
-                .authType(AuthType.EMAIL)
+                .profilePicUrl(profilePicUrl)
+                .authType(authType)
                 .providerId(signupRequest.getProviderId())
                 .username(signupRequest.getUsername())
                 .password(this.bCryptPasswordEncoder.encode(signupRequest.getPassword()))
@@ -121,61 +129,56 @@ public class AuthenticationService {
 
     }
 
-    public ResponseEntity<LoginResponse> loginWithOAuth2(OAuth2User oAuth2User, String registrationId){
+public ResponseEntity<LoginResponse> loginWithOAuth2(OAuth2User oAuth2User, String registrationId) {
+    String providerId = this.authenticationUtility.getProviderId(registrationId, oAuth2User);
+    AuthType authType = this.authenticationUtility.getAuthType(registrationId);
+    
+    String email = oAuth2User.getAttribute("email").toString();
+    
+    // ✅ FIXED: Safe Optional handling for OAuth user
+    Optional<Users> optionalOAuthUser = this.authenticationRepository.findByProviderIdAndAuthType(providerId, authType);
+    Users oAuthUser = optionalOAuthUser.orElse(null);
+    
+    // ✅ FIXED: Efficient email lookup (uses repo method)
+    Optional<Users> optionalEmailUser = this.authenticationRepository.findByEmail(email);
+    Users emailUsers = optionalEmailUser.orElse(null);
+    
+    Users users = null;
 
-        String providerId = this.authenticationUtility.getProviderId(registrationId, oAuth2User);
-        AuthType authType = this.authenticationUtility.getAuthType(registrationId);
-
-        Users oAuthUser = this.authenticationRepository.findByProviderIdAndAuthType(providerId, authType).get();
-
-        String email = oAuth2User.getAttribute("email").toString();
-
-        Users emailUsers = this.authenticationRepository.findAll()
-        .stream()
-        .filter(
-            users->users.getEmail().equals(email)
-        )
-        .findFirst()
-        .orElse(null);
-
-        Users users = null;
-
-        if(oAuthUser!=null){
-
-            log.info("OAuth User already exist with AuthType: "+oAuthUser.getAuthType()+" and Provider Id: "+oAuthUser.getProviderId());
-            oAuthUser.setEmail(email);
-            users = this.authenticationRepository.save(oAuthUser);
-
-        }else if(emailUsers!=null){
-            if(emailUsers.getAuthType()==authType){
-
-                log.info("User with email "+emailUsers.getEmail()+" and Auth Type: "+emailUsers.getAuthType()+" exists");
-                emailUsers.setProviderId(providerId);
-                users = this.authenticationRepository.save(emailUsers);
-
-            }else{
-                log.error("User already has account with Auth Type: "+emailUsers.getAuthType());
-                throw new IllegalArgumentException("User already has account with Auth Type: "+emailUsers.getAuthType());
-            }
-        }else{
-
-            log.info("User does not exist , Signing up");
-            SignupRequest signupRequest = this.authenticationUtility.getSignupRequest(oAuth2User, registrationId);
-            log.info("Signup Request: "+signupRequest);
-            SignupResponse signupResponse = signupWithUsrnameAndPassword(signupRequest,"OAuth2",null);
-            users = signupResponse.getUsers();
+    if (oAuthUser != null) {
+        log.info("OAuth User already exist with AuthType: {} and Provider Id: {}", 
+                 oAuthUser.getAuthType(), oAuthUser.getProviderId());
+        oAuthUser.setEmail(email);
+        users = this.authenticationRepository.save(oAuthUser);
+        
+    } else if (emailUsers != null) {
+        if (emailUsers.getAuthType() == authType) {
+            log.info("User with email {} and Auth Type: {} exists", 
+                     emailUsers.getEmail(), emailUsers.getAuthType());
+            emailUsers.setProviderId(providerId);
+            users = this.authenticationRepository.save(emailUsers);
+        } else {
+            log.error("User already has account with Auth Type: {}", emailUsers.getAuthType());
+            throw new CustomException(HttpStatus.BAD_REQUEST.value(), 
+                "User already has account with Auth Type: " + emailUsers.getAuthType());
         }
+    } else {
+        log.info("User does not exist, Signing up");
+        SignupRequest signupRequest = this.authenticationUtility.getSignupRequest(oAuth2User, registrationId);
+        log.info("Signup Request: {}", signupRequest);
+        SignupResponse signupResponse = signupWithUsrnameAndPassword(signupRequest, "OAuth2", null,AuthType.GOOGLE);
+        users = signupResponse.getUsers();
+    }
 
-        LoginResponse loginResponse = LoginResponse.builder()
+    LoginResponse loginResponse = LoginResponse.builder()
         .users(users)
         .jwtToken(this.jwtService.generateJwtToken(users))
         .tokenType("OAuth2")
         .build();
 
-        return ResponseEntity.status(HttpStatus.OK).body(loginResponse);
+    return ResponseEntity.status(HttpStatus.OK).body(loginResponse);
+}
 
-
-    }
 
     public String uploadToCloudinary(MultipartFile multipartFile){
 
