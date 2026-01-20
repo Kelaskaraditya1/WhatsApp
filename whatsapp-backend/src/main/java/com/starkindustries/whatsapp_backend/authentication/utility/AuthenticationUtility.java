@@ -36,7 +36,7 @@ public class AuthenticationUtility {
 
         String email = oAuth2User.getAttribute("email");
         String username = email.split("@gmail.com")[0];
-        String name = oAuth2User.getName();
+        String name = oAuth2User.getAttribute("name").toString();
 
         SignupRequest signupRequest = null;
 

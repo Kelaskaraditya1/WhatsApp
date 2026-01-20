@@ -19,4 +19,8 @@ public interface AuthenticationRepository extends MongoRepository<Users,String> 
 
     public Optional<Users> findByEmail(String email);
 
+    public Optional<Users> findByUserId(String userId);
+
+    public boolean existsByUserId(String userId);
+
 }

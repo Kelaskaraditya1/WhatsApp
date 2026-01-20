@@ -77,7 +77,10 @@ public class SecurityConfigurations {
             "/oauth2/**",
             "/login/oauth2/**",
             "/auth/login",
-            "/auth/signup"
+            "/auth/signup",
+            "/chat/**",
+            "/recent/**",
+            "/ws/**"
         )
             .permitAll()
             .anyRequest()

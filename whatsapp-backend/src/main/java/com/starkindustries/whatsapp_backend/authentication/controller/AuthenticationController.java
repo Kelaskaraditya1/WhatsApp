@@ -1,6 +1,7 @@
 package com.starkindustries.whatsapp_backend.authentication.controller;
 import java.time.LocalDate;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
@@ -11,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,6 +31,7 @@ import com.starkindustries.whatsapp_backend.authentication.dto.response.SignupRe
 import com.starkindustries.whatsapp_backend.authentication.dto.response.VerifyOtpResponse;
 import com.starkindustries.whatsapp_backend.authentication.enums.AuthType;
 import com.starkindustries.whatsapp_backend.authentication.model.UserPrinciple;
+import com.starkindustries.whatsapp_backend.authentication.model.Users;
 import com.starkindustries.whatsapp_backend.authentication.service.AuthenticationService;
 import com.starkindustries.whatsapp_backend.authentication.service.JwtService;
 import com.starkindustries.whatsapp_backend.authentication.service.OtpService;
@@ -131,6 +134,12 @@ public ResponseEntity<?> signup(
     @PostMapping("/send/otp")
     public ResponseEntity<?> sendOtp(@RequestBody SendOtpRequest sendOtpRequest){
 
+        if(sendOtpRequest==null)
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Request Body is null");
+
+        else if(sendOtpRequest.getPhoneNumber()==null || sendOtpRequest.getPhoneNumber().isEmpty() || sendOtpRequest.getPhoneNumber().isBlank())
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Enter Valid Phone number");
+
         String otp = String.valueOf((100000L + new Random().nextLong(900000L)));
         SendOtpResponse sendOtpResponse = this.twilioSmsService.sendOtp("+91"+sendOtpRequest.getPhoneNumber(),otp);
 
@@ -140,6 +149,15 @@ public ResponseEntity<?> signup(
 
     @PostMapping("/verify/login/otp")
     public ResponseEntity<?> verifyOtp(@RequestBody VerifyOtpRequest verifyOtpRequesty){
+
+        if(verifyOtpRequesty==null)
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Verify Request is null");
+
+        else if(verifyOtpRequesty.getPhoneNumber()==null || verifyOtpRequesty.getPhoneNumber().isEmpty() || verifyOtpRequesty.getPhoneNumber().isBlank())
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Enter Valid Phone number");
+        
+        else if(verifyOtpRequesty.getOtp()==null || verifyOtpRequesty.getOtp().isEmpty() || verifyOtpRequesty.getOtp().isBlank())
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Enter Valid Otp");
 
         VerifyOtpResponse verifyOtpResponse = this.otpService.verifyOtp(verifyOtpRequesty);
         return ResponseEntity.ok(verifyOtpResponse);
@@ -171,6 +189,16 @@ public ResponseEntity<?> signup(
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
         }
             
+
+    }
+
+    @GetMapping("/all/users/{userId}")
+    public ResponseEntity<?> getAllUsers(
+        @PathVariable("userId") String userId
+    ){
+
+        List<Users> users = this.authenticationService.getAllUsers(userId);
+        return ResponseEntity.status(HttpStatus.OK).body(users);
 
     }
 

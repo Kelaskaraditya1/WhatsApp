@@ -1,4 +1,4 @@
-package com.starkindustries.whatsapp_backend.configurations;
+package com.starkindustries.whatsapp_backend.cloudinary;
 
 import java.util.HashMap;
 import java.util.Map;
