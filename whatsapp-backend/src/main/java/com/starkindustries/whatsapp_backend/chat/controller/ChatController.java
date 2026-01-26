@@ -1,11 +1,9 @@
 package com.starkindustries.whatsapp_backend.chat.controller;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
-
 import com.starkindustries.whatsapp_backend.chat.dto.request.MessageRequest;
 import com.starkindustries.whatsapp_backend.chat.enums.ChatType;
 import com.starkindustries.whatsapp_backend.chat.model.Message;
@@ -21,18 +19,32 @@ public class ChatController {
     public SimpMessagingTemplate simpMessagingTemplatep;
 
     @MessageMapping("/dm/message")
-    public Message sendMessage(
+    public Message sendDmMessage(
         @Payload MessageRequest sendMessageRequest
     ){
-
         
         if(sendMessageRequest.getChatType()==ChatType.DM){
-         Message message = this.chatService.saveMessage(sendMessageRequest);
+         Message message = this.chatService.saveDmMessage(sendMessageRequest);
          this.simpMessagingTemplatep.convertAndSend("/topic/dm/"+message.getChatRoomId(),message);
          return message;   
         }
 
         return null;
     }
+
+    @MessageMapping("/group/message")
+    public Message sendGroupMessage(
+        @Payload MessageRequest messageRequest
+    ){
+
+        Message message = this.chatService.saveGroupMessage(messageRequest);
+        this.simpMessagingTemplatep.convertAndSend("/topic/group/"+messageRequest.getGroupId(), message);
+        return message;
+    }
+
+
+
+
+
     
 }

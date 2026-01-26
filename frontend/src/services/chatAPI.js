@@ -93,6 +93,61 @@ export const chatAPI = {
       return { success: false, error: error.message };
     }
   },
+
+  // Create a new group
+  createGroup: async (groupData, groupPicFile = null) => {
+    const url = `${API_BASE_URL}/create/group`;
+    const formData = new FormData();
+    
+    // Add group data as JSON blob
+    formData.append('group', new Blob([JSON.stringify(groupData)], { type: 'application/json' }));
+    
+    // Add optional group picture
+    if (groupPicFile) {
+      formData.append('file', groupPicFile);
+    }
+
+    const token = localStorage.getItem('token');
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+        headers,
+        credentials: 'include',
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(data?.message || `Failed to create group`);
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      console.error('Create Group Error:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Accept group invite
+  acceptGroupInvite: async (groupId, userId) => {
+    return apiRequest('/accept/group/invite', {
+      method: 'POST',
+      body: JSON.stringify({ groupId, userId }),
+    });
+  },
+
+  // Get group by ID
+  getGroupById: async (groupId) => {
+    return apiRequest(`/group/${groupId}`, {
+      method: 'GET',
+    });
+  },
 };
 
 // Helper function to generate chatRoomId (sorted alphabetically)

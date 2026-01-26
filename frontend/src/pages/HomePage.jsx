@@ -25,6 +25,9 @@ import {
   MdVideoLibrary,
   MdPictureAsPdf,
   MdAudioFile,
+  MdGroup,
+  MdGroupAdd,
+  MdBlock,
 } from 'react-icons/md';
 import { HiStatusOnline } from 'react-icons/hi';
 
@@ -33,20 +36,24 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080
 // Allowed file types for upload
 const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.mp4', '.pdf', '.mp3', '.docs'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const LONG_PRESS_DURATION = 500; // 500ms for long press
 
 const HomePage = () => {
   const navigate = useNavigate();
   const messagesEndRef = useRef(null);
   const stompClientRef = useRef(null);
   const currentSubscriptionRef = useRef(null);
+  const inviteSubscriptionRef = useRef(null);
   const fileInputRef = useRef(null);
+  const groupPicInputRef = useRef(null);
+  const longPressTimerRef = useRef(null);
 
   // User state
   const [user, setUser] = useState(null);
   
-  // Chat state
-  const [recentChats, setRecentChats] = useState([]);
-  const [selectedChat, setSelectedChat] = useState(null);
+  // Chat state - unified for both DMs and Groups
+  const [recentChats, setRecentChats] = useState([]); // { type: 'dm' | 'group', data: User | Group, status?: 'pending' | 'accepted' }
+  const [selectedChat, setSelectedChat] = useState(null); // { type: 'dm' | 'group', data: User | Group, status?: 'pending' | 'accepted' }
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [isLoadingChats, setIsLoadingChats] = useState(true);
@@ -64,6 +71,18 @@ const HomePage = () => {
   const [allUsers, setAllUsers] = useState([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Group selection state
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedUsers, setSelectedUsers] = useState([]);
+  
+  // Group creation modal state
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  const [groupStatus, setGroupStatus] = useState('');
+  const [groupPicFile, setGroupPicFile] = useState(null);
+  const [groupPicPreview, setGroupPicPreview] = useState(null);
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   
   // WebSocket connection state
   const [isConnected, setIsConnected] = useState(false);
@@ -102,6 +121,31 @@ const HomePage = () => {
       onConnect: () => {
         console.log('WebSocket Connected');
         setIsConnected(true);
+        
+        // Subscribe to group invites (topic-based)
+        inviteSubscriptionRef.current = client.subscribe(
+          `/topic/invite/${user.userId}`,
+          (message) => {
+            const group = JSON.parse(message.body);
+            console.log('Received group invite:', group);
+            
+            // Add group to recent chats as pending
+            const newGroupChat = {
+              type: 'group',
+              data: group,
+              status: 'pending'
+            };
+            
+            setRecentChats((prev) => {
+              // Check if already exists
+              const exists = prev.some(chat => 
+                chat.type === 'group' && chat.data.groupId === group.groupId
+              );
+              if (exists) return prev;
+              return [newGroupChat, ...prev];
+            });
+          }
+        );
       },
       onDisconnect: () => {
         console.log('WebSocket Disconnected');
@@ -116,6 +160,9 @@ const HomePage = () => {
     stompClientRef.current = client;
 
     return () => {
+      if (inviteSubscriptionRef.current) {
+        inviteSubscriptionRef.current.unsubscribe();
+      }
       if (client.active) {
         client.deactivate();
       }
@@ -130,7 +177,25 @@ const HomePage = () => {
       setIsLoadingChats(true);
       const response = await chatAPI.getRecentChats(user.userId);
       if (response.success && response.data) {
-        setRecentChats(response.data);
+        // Convert backend RecentChatItem format to frontend format
+        const chats = response.data.map(item => {
+          if (item.type === 'dm' && item.user) {
+            return {
+              type: 'dm',
+              data: item.user,
+              status: 'accepted'
+            };
+          } else if (item.type === 'group' && item.group) {
+            return {
+              type: 'group',
+              data: item.group,
+              status: 'accepted' // Groups in recentChats are accepted
+            };
+          }
+          return null;
+        }).filter(Boolean); // Remove any null entries
+        
+        setRecentChats(chats);
       }
       setIsLoadingChats(false);
     };
@@ -138,20 +203,30 @@ const HomePage = () => {
     loadRecentChats();
   }, [user?.userId]);
 
-  // Subscribe to chat room when selected
+  // Subscribe to chat room when selected (DM or Group)
   useEffect(() => {
     if (!selectedChat || !user || !stompClientRef.current || !isConnected) return;
-
-    const chatRoomId = getChatRoomId(user.userId, selectedChat.userId);
+    
+    // Don't subscribe for pending groups
+    if (selectedChat.type === 'group' && selectedChat.status === 'pending') return;
 
     // Unsubscribe from previous chat
     if (currentSubscriptionRef.current) {
       currentSubscriptionRef.current.unsubscribe();
     }
 
-    // Subscribe to new chat room
+    let topic;
+    if (selectedChat.type === 'dm') {
+      const chatRoomId = getChatRoomId(user.userId, selectedChat.data.userId);
+      topic = `/topic/dm/${chatRoomId}`;
+    } else {
+      // Group chat
+      topic = `/topic/group/${selectedChat.data.groupId}`;
+    }
+
+    // Subscribe to chat room/group
     currentSubscriptionRef.current = stompClientRef.current.subscribe(
-      `/topic/dm/${chatRoomId}`,
+      topic,
       (message) => {
         const receivedMessage = JSON.parse(message.body);
         setMessages((prev) => [...prev, receivedMessage]);
@@ -165,13 +240,25 @@ const HomePage = () => {
     };
   }, [selectedChat, user, isConnected]);
 
-  // Load messages when chat is selected
+  // Load messages when chat is selected (DM or Group)
   useEffect(() => {
     if (!selectedChat || !user) return;
+    
+    // Don't load messages for pending groups
+    if (selectedChat.type === 'group' && selectedChat.status === 'pending') {
+      setMessages([]);
+      return;
+    }
 
     const loadMessages = async () => {
       setIsLoadingMessages(true);
-      const chatRoomId = getChatRoomId(user.userId, selectedChat.userId);
+      let chatRoomId;
+      if (selectedChat.type === 'dm') {
+        chatRoomId = getChatRoomId(user.userId, selectedChat.data.userId);
+      } else {
+        // For groups, chatRoomId = groupId
+        chatRoomId = selectedChat.data.groupId;
+      }
       const response = await chatAPI.getMessages(chatRoomId);
       if (response.success && response.data) {
         setMessages(response.data);
@@ -256,7 +343,7 @@ const HomePage = () => {
     return 'TEXT';
   };
 
-  // Send message (with optional media)
+  // Send message (with optional media) - supports DM and Group
   const handleSendMessage = useCallback(async () => {
     const hasText = newMessage.trim().length > 0;
     const hasMedia = selectedFile !== null;
@@ -264,6 +351,9 @@ const HomePage = () => {
     // Must have either text or media
     if (!hasText && !hasMedia) return;
     if (!selectedChat || !user || !stompClientRef.current || !isConnected) return;
+    
+    // For groups, only send if accepted
+    if (selectedChat.type === 'group' && selectedChat.status !== 'accepted') return;
 
     setIsSending(true);
     let mediaUrl = null;
@@ -283,19 +373,37 @@ const HomePage = () => {
       }
     }
 
-    const messagePayload = {
-      senderId: user.userId,
-      reciverId: selectedChat.userId,
-      message: hasText ? newMessage.trim() : '',
-      mediaUrl: mediaUrl,
-      chatType: 'DM',
-      messageType: getMessageType(hasText, hasMedia),
-    };
+    if (selectedChat.type === 'dm') {
+      // DM message
+      const messagePayload = {
+        senderId: user.userId,
+        reciverId: selectedChat.data.userId,
+        message: hasText ? newMessage.trim() : '',
+        mediaUrl: mediaUrl,
+        chatType: 'DM',
+        messageType: getMessageType(hasText, hasMedia),
+      };
 
-    stompClientRef.current.publish({
-      destination: '/app/dm/message',
-      body: JSON.stringify(messagePayload),
-    });
+      stompClientRef.current.publish({
+        destination: '/app/dm/message',
+        body: JSON.stringify(messagePayload),
+      });
+    } else {
+      // Group message
+      const messagePayload = {
+        senderId: user.userId,
+        groupId: selectedChat.data.groupId,
+        message: hasText ? newMessage.trim() : '',
+        mediaUrl: mediaUrl,
+        chatType: 'GROUP',
+        messageType: getMessageType(hasText, hasMedia),
+      };
+
+      stompClientRef.current.publish({
+        destination: '/app/group/message',
+        body: JSON.stringify(messagePayload),
+      });
+    }
 
     setNewMessage('');
     handleClearFile();
@@ -314,6 +422,8 @@ const HomePage = () => {
   const handleOpenNewChat = async () => {
     setShowNewChatModal(true);
     setIsLoadingUsers(true);
+    setIsSelectionMode(false);
+    setSelectedUsers([]);
     const response = await chatAPI.getAllUsers(user.userId);
     if (response.success && response.data) {
       setAllUsers(response.data);
@@ -321,16 +431,170 @@ const HomePage = () => {
     setIsLoadingUsers(false);
   };
 
+  // Handle long press start
+  const handleLongPressStart = (chatUser) => {
+    longPressTimerRef.current = setTimeout(() => {
+      setIsSelectionMode(true);
+      setSelectedUsers([chatUser]);
+    }, LONG_PRESS_DURATION);
+  };
+
+  // Handle long press end
+  const handleLongPressEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
+  };
+
+  // Handle user click in selection mode
+  const handleUserClick = (chatUser) => {
+    if (isSelectionMode) {
+      // Toggle selection
+      if (selectedUsers.find(u => u.userId === chatUser.userId)) {
+        const newSelected = selectedUsers.filter(u => u.userId !== chatUser.userId);
+        setSelectedUsers(newSelected);
+        if (newSelected.length === 0) {
+          setIsSelectionMode(false);
+        }
+      } else {
+        setSelectedUsers([...selectedUsers, chatUser]);
+      }
+    } else {
+      // Start DM chat
+      handleStartChat(chatUser);
+    }
+  };
+
   // Start new chat with user
   const handleStartChat = (chatUser) => {
-    setSelectedChat(chatUser);
+    const newChat = {
+      type: 'dm',
+      data: chatUser,
+      status: 'accepted'
+    };
+    setSelectedChat(newChat);
     setShowNewChatModal(false);
     setMessages([]);
+    setIsSelectionMode(false);
+    setSelectedUsers([]);
     
     // Add to recent chats if not already there
-    if (!recentChats.find(c => c.userId === chatUser.userId)) {
-      setRecentChats(prev => [chatUser, ...prev]);
+    if (!recentChats.find(c => c.type === 'dm' && c.data.userId === chatUser.userId)) {
+      setRecentChats(prev => [newChat, ...prev]);
     }
+  };
+
+  // Select a chat from sidebar
+  const handleSelectChat = (chat) => {
+    setSelectedChat(chat);
+    setMessages([]);
+  };
+
+  // Close new chat modal
+  const handleCloseNewChatModal = () => {
+    setShowNewChatModal(false);
+    setIsSelectionMode(false);
+    setSelectedUsers([]);
+    setSearchQuery('');
+  };
+
+  // Open group creation modal
+  const handleOpenGroupModal = () => {
+    setShowGroupModal(true);
+    setShowNewChatModal(false);
+  };
+
+  // Handle group picture selection
+  const handleGroupPicSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    if (!file.type.startsWith('image/')) {
+      return;
+    }
+    
+    setGroupPicFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setGroupPicPreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Create group
+  const handleCreateGroup = async () => {
+    if (!groupName.trim() || selectedUsers.length === 0) return;
+    
+    setIsCreatingGroup(true);
+    
+    const groupData = {
+      groupName: groupName.trim(),
+      createdBy: user.userId,
+      status: groupStatus.trim() || 'Hey there! I am using ChatConnect',
+      participantId: selectedUsers.map(u => u.userId),
+    };
+    
+    const response = await chatAPI.createGroup(groupData, groupPicFile);
+    
+    if (response.success) {
+      console.log('Group created:', response.data);
+      
+      // Create the new group chat item
+      const newGroupChat = {
+        type: 'group',
+        data: response.data,
+        status: 'accepted' // Creator is automatically accepted
+      };
+      
+      // Add to recentChats
+      setRecentChats(prev => [newGroupChat, ...prev]);
+      
+      // Open the group chat immediately
+      setSelectedChat(newGroupChat);
+      setMessages([]);
+      
+      // Reset and close modal
+      setShowGroupModal(false);
+      setGroupName('');
+      setGroupStatus('');
+      setGroupPicFile(null);
+      setGroupPicPreview(null);
+      setSelectedUsers([]);
+      setIsSelectionMode(false);
+    } else {
+      console.error('Failed to create group:', response.error);
+    }
+    
+    setIsCreatingGroup(false);
+  };
+
+  // Accept group invite
+  const handleAcceptInvite = async () => {
+    if (!selectedChat || selectedChat.type !== 'group') return;
+    
+    const response = await chatAPI.acceptGroupInvite(selectedChat.data.groupId, user.userId);
+    if (response.success) {
+      console.log('Joined group:', response.data);
+      // Update chat status to accepted
+      setRecentChats(prev => prev.map(chat => {
+        if (chat.type === 'group' && chat.data.groupId === selectedChat.data.groupId) {
+          return { ...chat, status: 'accepted' };
+        }
+        return chat;
+      }));
+      setSelectedChat(prev => ({ ...prev, status: 'accepted' }));
+    }
+  };
+
+  // Block/decline group invite
+  const handleBlockInvite = () => {
+    if (!selectedChat || selectedChat.type !== 'group') return;
+    
+    // Remove from recent chats and close
+    setRecentChats(prev => prev.filter(chat => 
+      !(chat.type === 'group' && chat.data.groupId === selectedChat.data.groupId)
+    ));
+    setSelectedChat(null);
   };
 
   // Logout
@@ -427,6 +691,33 @@ const HomePage = () => {
         <span className="text-sm">Download File</span>
       </a>
     );
+  };
+
+  // Get chat display name
+  const getChatName = (chat) => {
+    if (chat.type === 'dm') {
+      return chat.data.name;
+    }
+    return chat.data.groupName;
+  };
+
+  // Get chat avatar
+  const getChatAvatar = (chat) => {
+    if (chat.type === 'dm') {
+      return chat.data.profilePicUrl;
+    }
+    return chat.data.groupPicUrl;
+  };
+
+  // Get chat subtitle
+  const getChatSubtitle = (chat) => {
+    if (chat.type === 'dm') {
+      return `@${chat.data.username}`;
+    }
+    if (chat.status === 'pending') {
+      return '📩 Group Invite';
+    }
+    return chat.data.status || 'Group';
   };
 
   // Filter users by search
@@ -526,36 +817,51 @@ const HomePage = () => {
               <p className="text-center text-xs mt-1">Click the + button to start a new chat</p>
             </div>
           ) : (
-            recentChats.map((chat) => (
-              <button
-                key={chat.userId}
-                onClick={() => {
-                  setSelectedChat(chat);
-                  setMessages([]);
-                }}
-                className={`w-full p-4 flex items-center gap-3 hover:bg-slate-700/50 transition-colors ${
-                  selectedChat?.userId === chat.userId ? 'bg-slate-700' : ''
-                }`}
-              >
-                {/* Avatar */}
-                {chat.profilePicUrl ? (
-                  <img
-                    src={chat.profilePicUrl}
-                    alt={chat.name}
-                    className="w-12 h-12 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-bold">
-                    {getInitials(chat.name)}
+            recentChats.map((chat, index) => {
+              const chatId = chat.type === 'dm' ? chat.data.userId : chat.data.groupId;
+              const isSelected = selectedChat && (
+                (selectedChat.type === 'dm' && chat.type === 'dm' && selectedChat.data.userId === chat.data.userId) ||
+                (selectedChat.type === 'group' && chat.type === 'group' && selectedChat.data.groupId === chat.data.groupId)
+              );
+              
+              return (
+                <button
+                  key={`${chat.type}-${chatId}`}
+                  onClick={() => handleSelectChat(chat)}
+                  className={`w-full p-4 flex items-center gap-3 hover:bg-slate-700/50 transition-colors ${
+                    isSelected ? 'bg-slate-700' : ''
+                  } ${chat.status === 'pending' ? 'border-l-4 border-amber-500' : ''}`}
+                >
+                  {/* Avatar */}
+                  {getChatAvatar(chat) ? (
+                    <img
+                      src={getChatAvatar(chat)}
+                      alt={getChatName(chat)}
+                      className="w-12 h-12 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${
+                      chat.type === 'group' 
+                        ? 'bg-gradient-to-br from-purple-400 to-purple-600' 
+                        : 'bg-gradient-to-br from-emerald-400 to-emerald-600'
+                    }`}>
+                      {chat.type === 'group' ? (
+                        <MdGroup className="text-xl" />
+                      ) : (
+                        getInitials(getChatName(chat))
+                      )}
+                    </div>
+                  )}
+                  {/* Chat Info */}
+                  <div className="flex-1 text-left">
+                    <p className="text-white font-medium truncate">{getChatName(chat)}</p>
+                    <p className={`text-sm truncate ${chat.status === 'pending' ? 'text-amber-400' : 'text-slate-400'}`}>
+                      {getChatSubtitle(chat)}
+                    </p>
                   </div>
-                )}
-                {/* Chat Info */}
-                <div className="flex-1 text-left">
-                  <p className="text-white font-medium truncate">{chat.name}</p>
-                  <p className="text-slate-400 text-sm truncate">@{chat.username}</p>
-                </div>
-              </button>
-            ))
+                </button>
+              );
+            })
           )}
         </div>
       </div>
@@ -572,29 +878,61 @@ const HomePage = () => {
               >
                 <MdArrowBack className="text-slate-400" />
               </button>
-              {selectedChat.profilePicUrl ? (
+              {getChatAvatar(selectedChat) ? (
                 <img
-                  src={selectedChat.profilePicUrl}
-                  alt={selectedChat.name}
+                  src={getChatAvatar(selectedChat)}
+                  alt={getChatName(selectedChat)}
                   className="w-10 h-10 rounded-full object-cover"
                 />
               ) : (
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-bold">
-                  {getInitials(selectedChat.name)}
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${
+                  selectedChat.type === 'group' 
+                    ? 'bg-gradient-to-br from-purple-400 to-purple-600' 
+                    : 'bg-gradient-to-br from-emerald-400 to-emerald-600'
+                }`}>
+                  {selectedChat.type === 'group' ? (
+                    <MdGroup className="text-lg" />
+                  ) : (
+                    getInitials(getChatName(selectedChat))
+                  )}
                 </div>
               )}
               <div>
-                <p className="text-white font-medium">{selectedChat.name}</p>
-                <p className="text-emerald-500 text-xs flex items-center gap-1">
-                  <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
-                  {isConnected ? 'Online' : 'Connecting...'}
+                <p className="text-white font-medium">{getChatName(selectedChat)}</p>
+                <p className={`text-xs flex items-center gap-1 ${
+                  selectedChat.status === 'pending' ? 'text-amber-400' : 'text-emerald-500'
+                }`}>
+                  {selectedChat.status === 'pending' ? (
+                    '📩 Group Invite'
+                  ) : (
+                    <>
+                      <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                      {isConnected ? 'Online' : 'Connecting...'}
+                    </>
+                  )}
                 </p>
               </div>
             </div>
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-900">
-              {isLoadingMessages ? (
+              {selectedChat.type === 'group' && selectedChat.status === 'pending' ? (
+                // Group invite view
+                <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                  <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-4 ${
+                    getChatAvatar(selectedChat) ? '' : 'bg-gradient-to-br from-purple-400 to-purple-600'
+                  }`}>
+                    {getChatAvatar(selectedChat) ? (
+                      <img src={getChatAvatar(selectedChat)} alt="" className="w-24 h-24 rounded-full object-cover" />
+                    ) : (
+                      <MdGroup className="text-4xl text-white" />
+                    )}
+                  </div>
+                  <h3 className="text-2xl font-bold text-white mb-2">{selectedChat.data.groupName}</h3>
+                  <p className="text-slate-400 mb-1">{selectedChat.data.status || 'Group'}</p>
+                  <p className="text-slate-500 text-sm mb-6">You've been invited to join this group</p>
+                </div>
+              ) : isLoadingMessages ? (
                 <div className="flex items-center justify-center h-full">
                   <MdRefresh className="text-emerald-500 text-2xl animate-spin" />
                 </div>
@@ -643,8 +981,8 @@ const HomePage = () => {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* File Preview */}
-            {filePreview && (
+            {/* File Preview - show for DM or accepted Group */}
+            {filePreview && (selectedChat.type === 'dm' || (selectedChat.type === 'group' && selectedChat.status === 'accepted')) && (
               <div className="px-4 py-2 bg-slate-800 border-t border-slate-700">
                 <div className="flex items-center gap-3 p-3 bg-slate-700 rounded-xl">
                   {filePreview.type === 'image' ? (
@@ -679,48 +1017,71 @@ const HomePage = () => {
               </div>
             )}
 
-            {/* Message Input */}
-            <div className="p-4 bg-slate-800 border-t border-slate-700">
-              <div className="flex items-center gap-3">
-                {/* Hidden file input */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".jpg,.jpeg,.png,.mp4,.pdf,.mp3,.docs"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-                
-                {/* Attachment button */}
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isSending}
-                  className="w-12 h-12 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-xl flex items-center justify-center transition-colors"
-                >
-                  <MdAttachFile className="text-slate-300 text-xl" />
-                </button>
-                
-                <input
-                  type="text"
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder={selectedFile ? "Add a caption..." : "Type a message..."}
-                  className="flex-1 px-4 py-3 bg-slate-700 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <button
-                  onClick={handleSendMessage}
-                  disabled={(!newMessage.trim() && !selectedFile) || isSending || isUploading || !isConnected}
-                  className="w-12 h-12 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-600 disabled:cursor-not-allowed rounded-xl flex items-center justify-center transition-colors"
-                >
-                  {isSending || isUploading ? (
-                    <MdRefresh className="text-white text-xl animate-spin" />
-                  ) : (
-                    <MdSend className="text-white text-xl" />
-                  )}
-                </button>
+            {/* Message Input OR Accept/Block buttons for pending groups */}
+            {selectedChat.type === 'group' && selectedChat.status === 'pending' ? (
+              // Accept/Block buttons for pending group invite
+              <div className="p-4 bg-slate-800 border-t border-slate-700">
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleAcceptInvite}
+                    className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl flex items-center justify-center gap-2 font-medium transition-colors"
+                  >
+                    <MdCheck className="text-xl" />
+                    Accept
+                  </button>
+                  <button
+                    onClick={handleBlockInvite}
+                    className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl flex items-center justify-center gap-2 font-medium transition-colors"
+                  >
+                    <MdBlock className="text-xl" />
+                    Block
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              // Message input for DM chats and accepted groups
+              <div className="p-4 bg-slate-800 border-t border-slate-700">
+                <div className="flex items-center gap-3">
+                  {/* Hidden file input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.mp4,.pdf,.mp3,.docs"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                  
+                  {/* Attachment button */}
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isSending}
+                    className="w-12 h-12 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-xl flex items-center justify-center transition-colors"
+                  >
+                    <MdAttachFile className="text-slate-300 text-xl" />
+                  </button>
+                  
+                  <input
+                    type="text"
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder={selectedFile ? "Add a caption..." : "Type a message..."}
+                    className="flex-1 px-4 py-3 bg-slate-700 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={(!newMessage.trim() && !selectedFile) || isSending || isUploading || !isConnected}
+                    className="w-12 h-12 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-600 disabled:cursor-not-allowed rounded-xl flex items-center justify-center transition-colors"
+                  >
+                    {isSending || isUploading ? (
+                      <MdRefresh className="text-white text-xl animate-spin" />
+                    ) : (
+                      <MdSend className="text-white text-xl" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         ) : (
           /* Welcome Screen */
@@ -750,14 +1111,43 @@ const HomePage = () => {
           <div className="bg-slate-800 rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col shadow-xl">
             {/* Modal Header */}
             <div className="p-4 border-b border-slate-700 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-white">New Chat</h3>
-              <button
-                onClick={() => setShowNewChatModal(false)}
-                className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-              >
-                <MdClose className="text-slate-400" />
-              </button>
+              <div>
+                <h3 className="text-lg font-bold text-white">
+                  {isSelectionMode ? `${selectedUsers.length} selected` : 'New Chat'}
+                </h3>
+                {isSelectionMode && (
+                  <p className="text-xs text-slate-400">Tap to select more, or create group</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {isSelectionMode && (
+                  <button
+                    onClick={() => {
+                      setIsSelectionMode(false);
+                      setSelectedUsers([]);
+                    }}
+                    className="px-3 py-1 text-sm text-slate-400 hover:text-white transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  onClick={handleCloseNewChatModal}
+                  className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+                >
+                  <MdClose className="text-slate-400" />
+                </button>
+              </div>
             </div>
+
+            {/* Instruction */}
+            {!isSelectionMode && (
+              <div className="px-4 py-2 bg-slate-700/50 text-center">
+                <p className="text-xs text-slate-400">
+                  👆 Tap to start DM • 👆👆 Long-press to select for group
+                </p>
+              </div>
+            )}
 
             {/* Search */}
             <div className="p-4 border-b border-slate-700">
@@ -784,32 +1174,174 @@ const HomePage = () => {
                   <p className="text-sm">No users found</p>
                 </div>
               ) : (
-                filteredUsers.map((chatUser) => (
-                  <button
-                    key={chatUser.userId}
-                    onClick={() => handleStartChat(chatUser)}
-                    className="w-full p-4 flex items-center gap-3 hover:bg-slate-700/50 transition-colors"
-                  >
-                    {/* Avatar */}
-                    {chatUser.profilePicUrl ? (
-                      <img
-                        src={chatUser.profilePicUrl}
-                        alt={chatUser.name}
-                        className="w-12 h-12 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-bold">
-                        {getInitials(chatUser.name)}
+                filteredUsers.map((chatUser) => {
+                  const isSelected = selectedUsers.find(u => u.userId === chatUser.userId);
+                  return (
+                    <button
+                      key={chatUser.userId}
+                      onClick={() => handleUserClick(chatUser)}
+                      onMouseDown={() => handleLongPressStart(chatUser)}
+                      onMouseUp={handleLongPressEnd}
+                      onMouseLeave={handleLongPressEnd}
+                      onTouchStart={() => handleLongPressStart(chatUser)}
+                      onTouchEnd={handleLongPressEnd}
+                      className={`w-full p-4 flex items-center gap-3 transition-colors ${
+                        isSelected 
+                          ? 'bg-emerald-500/20 border-l-4 border-emerald-500' 
+                          : 'hover:bg-slate-700/50'
+                      }`}
+                    >
+                      {/* Selection indicator */}
+                      {isSelectionMode && (
+                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                          isSelected ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500'
+                        }`}>
+                          {isSelected && <MdCheck className="text-white text-sm" />}
+                        </div>
+                      )}
+                      
+                      {/* Avatar */}
+                      {chatUser.profilePicUrl ? (
+                        <img
+                          src={chatUser.profilePicUrl}
+                          alt={chatUser.name}
+                          className="w-12 h-12 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-bold">
+                          {getInitials(chatUser.name)}
+                        </div>
+                      )}
+                      {/* User Info */}
+                      <div className="flex-1 text-left">
+                        <p className="text-white font-medium">{chatUser.name}</p>
+                        <p className="text-slate-400 text-sm">@{chatUser.username}</p>
                       </div>
-                    )}
-                    {/* User Info */}
-                    <div className="flex-1 text-left">
-                      <p className="text-white font-medium">{chatUser.name}</p>
-                      <p className="text-slate-400 text-sm">@{chatUser.username}</p>
-                    </div>
-                  </button>
-                ))
+                    </button>
+                  );
+                })
               )}
+            </div>
+
+            {/* Create Group Button (when in selection mode) */}
+            {isSelectionMode && selectedUsers.length > 0 && (
+              <div className="p-4 border-t border-slate-700">
+                <button
+                  onClick={handleOpenGroupModal}
+                  className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl flex items-center justify-center gap-2 font-medium transition-colors"
+                >
+                  <MdGroupAdd className="text-xl" />
+                  Create Group with {selectedUsers.length} members
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Group Creation Modal */}
+      {showGroupModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl w-full max-w-md shadow-xl">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-slate-700 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white">Create Group</h3>
+              <button
+                onClick={() => {
+                  setShowGroupModal(false);
+                  setShowNewChatModal(true);
+                }}
+                className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                <MdClose className="text-slate-400" />
+              </button>
+            </div>
+
+            {/* Group Form */}
+            <div className="p-4 space-y-4">
+              {/* Group Picture */}
+              <div className="flex justify-center">
+                <input
+                  ref={groupPicInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleGroupPicSelect}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => groupPicInputRef.current?.click()}
+                  className="w-24 h-24 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center transition-colors overflow-hidden"
+                >
+                  {groupPicPreview ? (
+                    <img src={groupPicPreview} alt="Group" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="text-center">
+                      <MdImage className="text-3xl text-slate-400 mx-auto" />
+                      <span className="text-xs text-slate-400">Add Photo</span>
+                    </div>
+                  )}
+                </button>
+              </div>
+
+              {/* Group Name */}
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Group Name *</label>
+                <input
+                  type="text"
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  placeholder="Enter group name..."
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Group Status */}
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Group Description</label>
+                <input
+                  type="text"
+                  value={groupStatus}
+                  onChange={(e) => setGroupStatus(e.target.value)}
+                  placeholder="Add a description..."
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Selected Members */}
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">Members ({selectedUsers.length})</label>
+                <div className="flex flex-wrap gap-2">
+                  {selectedUsers.map((u) => (
+                    <div key={u.userId} className="flex items-center gap-2 bg-slate-700 rounded-full px-3 py-1">
+                      <span className="text-sm text-white">{u.name}</span>
+                      <button
+                        onClick={() => setSelectedUsers(prev => prev.filter(x => x.userId !== u.userId))}
+                        className="text-slate-400 hover:text-white"
+                      >
+                        <MdClose className="text-sm" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Create Button */}
+            <div className="p-4 border-t border-slate-700">
+              <button
+                onClick={handleCreateGroup}
+                disabled={!groupName.trim() || selectedUsers.length === 0 || isCreatingGroup}
+                className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-xl flex items-center justify-center gap-2 font-medium transition-colors"
+              >
+                {isCreatingGroup ? (
+                  <MdRefresh className="text-xl animate-spin" />
+                ) : (
+                  <>
+                    <MdGroupAdd className="text-xl" />
+                    Create Group
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

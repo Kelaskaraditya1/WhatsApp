@@ -11,6 +11,9 @@ import org.springframework.stereotype.Service;
 
 import com.starkindustries.whatsapp_backend.authentication.model.Users;
 import com.starkindustries.whatsapp_backend.authentication.repository.AuthenticationRepository;
+import com.starkindustries.whatsapp_backend.chat.model.Group;
+import com.starkindustries.whatsapp_backend.chat.repository.GroupRepository;
+import com.starkindustries.whatsapp_backend.chatRoom.dto.RecentChatItem;
 import com.starkindustries.whatsapp_backend.chatRoom.model.ChatRoom;
 import com.starkindustries.whatsapp_backend.chatRoom.repository.ChatRoomRepository;
 import com.starkindustries.whatsapp_backend.exceptions.CustomException;
@@ -27,61 +30,99 @@ public class ChatRoomService {
     @Autowired
     public AuthenticationRepository authenticationRepository;
 
-    public ChatRoom getOrCreateChatRoom(String senderId){
+    @Autowired
+    public GroupRepository groupRepository;
 
-        if(senderId== null || senderId.isEmpty() || senderId.isBlank()){
+    public ChatRoom getOrCreateChatRoom(String senderId) {
+
+        if (senderId == null || senderId.isEmpty() || senderId.isBlank()) {
             log.error("Enter proper senderID");
-            throw new CustomException(HttpStatus.SC_BAD_REQUEST,"Enter proper senderId");
+            throw new CustomException(HttpStatus.SC_BAD_REQUEST, "Enter proper senderId");
         }
 
         ChatRoom chatRoom = this.chatRoomRepository.findBySenderId(senderId)
-        .orElse(null);
+                .orElse(null);
 
-        if(chatRoom!=null){
+        if (chatRoom != null) {
             log.info("Chatroom already exists");
             return chatRoom;
-        }else{
+        } else {
 
-            log.info("creating a new ChatRoom for userId: {}",senderId);
+            log.info("creating a new ChatRoom for userId: {}", senderId);
 
             ChatRoom chatRoom2 = ChatRoom.builder()
-            .id(UUID.randomUUID().toString())
-            .senderId(senderId)
-            .recentChatIds(new ArrayList<>())
-            .build();
+                    .id(UUID.randomUUID().toString())
+                    .senderId(senderId)
+                    .recentChatIds(new ArrayList<>())
+                    .build();
 
             return this.chatRoomRepository.save(chatRoom2);
         }
 
     }
 
-    public ChatRoom addChatIdToChatRoom(String senderId, String chatId){
+    public ChatRoom addChatIdToChatRoom(String senderId, String chatId) {
 
         ChatRoom chatRoom = getOrCreateChatRoom(senderId);
         chatRoom.addNewChatId(chatId);
         return this.chatRoomRepository.save(chatRoom);
     }
 
-    public List<Users> getRecentChatUsers(String senderId){
+    // Returns both Users (DM chats) and Groups
+    public List<RecentChatItem> getRecentChats(String senderId) {
 
-        if(this.authenticationRepository.existsByUserId(senderId)){
+        if (!this.authenticationRepository.existsByUserId(senderId)) {
+            log.error("User not found");
+            throw new CustomException(HttpStatus.SC_BAD_REQUEST, "User not found");
+        }
+
+        ChatRoom chatRoom = getOrCreateChatRoom(senderId);
+
+        if (chatRoom.getRecentChatIds().isEmpty())
+            return new ArrayList<>();
+
+        List<RecentChatItem> recentChats = new ArrayList<>();
+
+        for (String chatId : chatRoom.getRecentChatIds()) {
+            // Check if it's a user (DM)
+            if (this.authenticationRepository.existsByUserId(chatId)) {
+                Users user = this.authenticationRepository.findByUserId(chatId).get();
+                recentChats.add(RecentChatItem.fromUser(user));
+            }
+            // Check if it's a group
+            else if (this.groupRepository.existsById(chatId)) {
+                Group group = this.groupRepository.findById(chatId).get();
+                recentChats.add(RecentChatItem.fromGroup(group));
+            }
+            // Skip invalid IDs
+        }
+
+        return recentChats;
+    }
+
+    // Keep old method for backward compatibility if needed
+    public List<Users> getRecentChatUsers(String senderId) {
+
+        if (this.authenticationRepository.existsByUserId(senderId)) {
             ChatRoom chatRoom = getOrCreateChatRoom(senderId);
 
-            if(chatRoom.getRecentChatIds().isEmpty())
+            if (chatRoom.getRecentChatIds().isEmpty())
                 return new ArrayList<>();
 
             return chatRoom.getRecentChatIds()
-            .stream()
-            .map(
-                userId -> this.authenticationRepository.findByUserId(userId).get()
-            )
-            .collect(Collectors.toList());
+                    .stream()
+                    .filter(
+                            // Only include IDs that exist as users (skip group IDs)
+                            chatId -> this.authenticationRepository.existsByUserId(chatId))
+                    .map(
+                            userId -> this.authenticationRepository.findByUserId(userId).get())
+                    .collect(Collectors.toList());
 
-        }else{
+        } else {
             log.error("User not found");
-            throw new CustomException(HttpStatus.SC_BAD_REQUEST,"User not found");
+            throw new CustomException(HttpStatus.SC_BAD_REQUEST, "User not found");
         }
 
     }
-    
+
 }

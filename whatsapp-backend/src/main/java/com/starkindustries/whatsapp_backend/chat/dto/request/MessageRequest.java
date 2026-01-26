@@ -16,6 +16,7 @@ public class MessageRequest {
 
     private String senderId;
     private String reciverId;
+    private String groupId;
     private String message;
     private String mediaUrl;
     private ChatType chatType;

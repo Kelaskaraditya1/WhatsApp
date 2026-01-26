@@ -80,6 +80,9 @@ public class SecurityConfigurations {
             "/auth/signup",
             "/chat/**",
             "/recent/**",
+            "/create/**",
+            "/accept/**",
+            "/group/**",
             "/ws/**"
         )
             .permitAll()
