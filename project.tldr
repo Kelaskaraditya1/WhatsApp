@@ -19,13 +19,13 @@
 			"com.tldraw.shape.group": 0,
 			"com.tldraw.shape.text": 4,
 			"com.tldraw.shape.bookmark": 2,
-			"com.tldraw.shape.draw": 3,
+			"com.tldraw.shape.draw": 4,
 			"com.tldraw.shape.geo": 11,
 			"com.tldraw.shape.note": 10,
 			"com.tldraw.shape.line": 5,
 			"com.tldraw.shape.frame": 1,
 			"com.tldraw.shape.arrow": 8,
-			"com.tldraw.shape.highlight": 2,
+			"com.tldraw.shape.highlight": 3,
 			"com.tldraw.shape.embed": 4,
 			"com.tldraw.shape.image": 5,
 			"com.tldraw.shape.video": 4,
@@ -220,6 +220,48 @@
 			},
 			"parentId": "page:page",
 			"index": "b0cU6OxGl",
+			"typeName": "shape"
+		},
+		{
+			"x": -2278.544801517493,
+			"y": 7373.967866876753,
+			"rotation": 0,
+			"isLocked": false,
+			"opacity": 1,
+			"meta": {},
+			"id": "shape:3GLq4ilopdaMokfyp2CLd",
+			"type": "text",
+			"props": {
+				"color": "black",
+				"size": "m",
+				"w": 80.5,
+				"font": "draw",
+				"textAlign": "start",
+				"autoSize": true,
+				"scale": 4.078153181967573,
+				"richText": {
+					"type": "doc",
+					"attrs": {
+						"dir": "auto"
+					},
+					"content": [
+						{
+							"type": "paragraph",
+							"attrs": {
+								"dir": "auto"
+							},
+							"content": [
+								{
+									"type": "text",
+									"text": "Status"
+								}
+							]
+						}
+					]
+				}
+			},
+			"parentId": "page:page",
+			"index": "b1W3afc9V",
 			"typeName": "shape"
 		},
 		{
@@ -1148,9 +1190,9 @@
 			"typeName": "shape"
 		},
 		{
-			"x": 10175.92647106907,
-			"y": -3165.9876103462266,
-			"z": 0.11630764553551358,
+			"x": 5884.119518656052,
+			"y": -7755.968749471731,
+			"z": 0.3761429529079238,
 			"meta": {},
 			"id": "camera:page:page",
 			"typeName": "camera"
@@ -2382,12 +2424,12 @@
 			"typeName": "shape"
 		},
 		{
-			"editingShapeId": "shape:2q2z0bkBqpOqDxl72GUlN",
+			"editingShapeId": "shape:sFrcTu-CnZCYTp7jd1GXu",
 			"croppingShapeId": null,
 			"selectedShapeIds": [
-				"shape:2q2z0bkBqpOqDxl72GUlN"
+				"shape:sFrcTu-CnZCYTp7jd1GXu"
 			],
-			"hoveredShapeId": "shape:2q2z0bkBqpOqDxl72GUlN",
+			"hoveredShapeId": "shape:sFrcTu-CnZCYTp7jd1GXu",
 			"erasingShapeIds": [],
 			"hintingShapeIds": [],
 			"focusedGroupId": null,
@@ -4223,6 +4265,132 @@
 			"typeName": "shape"
 		},
 		{
+			"x": -5359.451827620539,
+			"y": 8634.174854406852,
+			"rotation": 0,
+			"isLocked": false,
+			"opacity": 1,
+			"meta": {},
+			"id": "shape:sFrcTu-CnZCYTp7jd1GXu",
+			"type": "text",
+			"props": {
+				"color": "black",
+				"size": "m",
+				"w": 2928.1280474327978,
+				"font": "draw",
+				"textAlign": "start",
+				"autoSize": true,
+				"scale": 3.153860242921283,
+				"richText": {
+					"type": "doc",
+					"attrs": {
+						"dir": "auto"
+					},
+					"content": [
+						{
+							"type": "paragraph",
+							"attrs": {
+								"dir": "auto"
+							},
+							"content": [
+								{
+									"type": "text",
+									"text": "working:"
+								}
+							]
+						},
+						{
+							"type": "paragraph",
+							"attrs": {
+								"dir": "auto"
+							},
+							"content": [
+								{
+									"type": "text",
+									"text": "1) upload normally with userId"
+								}
+							]
+						},
+						{
+							"type": "paragraph",
+							"attrs": {
+								"dir": "auto"
+							},
+							"content": [
+								{
+									"type": "text",
+									"text": "2) while getting status"
+								}
+							]
+						},
+						{
+							"type": "paragraph",
+							"attrs": {
+								"dir": "auto"
+							},
+							"content": [
+								{
+									"type": "text",
+									"text": "\t1) get chatRoom with userId"
+								}
+							]
+						},
+						{
+							"type": "paragraph",
+							"attrs": {
+								"dir": "auto"
+							},
+							"content": [
+								{
+									"type": "text",
+									"text": "\t2) get list of participants as String"
+								}
+							]
+						},
+						{
+							"type": "paragraph",
+							"attrs": {
+								"dir": "auto"
+							},
+							"content": [
+								{
+									"type": "text",
+									"text": "\t3) use Authentication repo to check whether it is a user or a grp"
+								}
+							]
+						},
+						{
+							"type": "paragraph",
+							"attrs": {
+								"dir": "auto"
+							},
+							"content": [
+								{
+									"type": "text",
+									"text": "\t4) fetch list<Status> for every user with userId && if status is active"
+								}
+							]
+						},
+						{
+							"type": "paragraph",
+							"attrs": {
+								"dir": "auto"
+							},
+							"content": [
+								{
+									"type": "text",
+									"text": "\t5) check for the users status as well and add mine = true/false "
+								}
+							]
+						}
+					]
+				}
+			},
+			"parentId": "page:page",
+			"index": "b1YFWaNEV",
+			"typeName": "shape"
+		},
+		{
 			"x": 2477.9774455384104,
 			"y": 3181.7268844559817,
 			"rotation": 0,
@@ -4981,6 +5149,108 @@
 			},
 			"parentId": "page:page",
 			"index": "ae560SQV",
+			"typeName": "shape"
+		},
+		{
+			"x": -3458.6815728799747,
+			"y": 7654.025090710385,
+			"rotation": 0,
+			"isLocked": false,
+			"opacity": 1,
+			"meta": {},
+			"id": "shape:DqgKBEJi-8esxi_C0Ns6q",
+			"type": "text",
+			"props": {
+				"color": "black",
+				"size": "m",
+				"w": 2680.1123790292886,
+				"font": "draw",
+				"textAlign": "start",
+				"autoSize": true,
+				"scale": 3.154743590770811,
+				"richText": {
+					"type": "doc",
+					"attrs": {
+						"dir": "auto"
+					},
+					"content": [
+						{
+							"type": "paragraph",
+							"attrs": {
+								"dir": "auto"
+							},
+							"content": [
+								{
+									"type": "text",
+									"text": "Functionality:"
+								}
+							]
+						},
+						{
+							"type": "paragraph",
+							"attrs": {
+								"dir": "auto"
+							}
+						},
+						{
+							"type": "paragraph",
+							"attrs": {
+								"dir": "auto"
+							},
+							"content": [
+								{
+									"type": "text",
+									"text": "1) user should be able to post status"
+								}
+							]
+						},
+						{
+							"type": "paragraph",
+							"attrs": {
+								"dir": "auto"
+							},
+							"content": [
+								{
+									"type": "text",
+									"text": "2) user should be able to view it's and only those status who are a "
+								}
+							]
+						},
+						{
+							"type": "paragraph",
+							"attrs": {
+								"dir": "auto"
+							},
+							"content": [
+								{
+									"type": "text",
+									"text": "part of it's chatRoom"
+								}
+							]
+						},
+						{
+							"type": "paragraph",
+							"attrs": {
+								"dir": "auto"
+							},
+							"content": [
+								{
+									"type": "text",
+									"text": "3) should delete after 24 status"
+								}
+							]
+						},
+						{
+							"type": "paragraph",
+							"attrs": {
+								"dir": "auto"
+							}
+						}
+					]
+				}
+			},
+			"parentId": "page:page",
+			"index": "b1Xgjakzl",
 			"typeName": "shape"
 		},
 		{
@@ -5983,8 +6253,8 @@
 			"screenBounds": {
 				"x": 0,
 				"y": 0,
-				"w": 1176,
-				"h": 707.2000122070312
+				"w": 1667.153564453125,
+				"h": 792.522705078125
 			},
 			"insets": [
 				false,
@@ -5999,7 +6269,7 @@
 			"isChatting": false,
 			"highlightedUserIds": [],
 			"isFocused": true,
-			"devicePixelRatio": 1.25,
+			"devicePixelRatio": 1.1204726696014404,
 			"isCoarsePointer": false,
 			"isHoveringCanvas": true,
 			"openMenus": [],

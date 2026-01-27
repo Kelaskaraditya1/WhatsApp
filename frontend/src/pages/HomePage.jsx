@@ -751,7 +751,10 @@ const HomePage = () => {
           <button className="w-10 h-10 rounded-xl text-slate-400 hover:bg-slate-700 flex items-center justify-center transition-colors">
             <MdChat className="text-xl" />
           </button>
-          <button className="w-10 h-10 rounded-xl text-slate-400 hover:bg-slate-700 flex items-center justify-center transition-colors">
+          <button 
+            onClick={() => navigate('/status')}
+            className="w-10 h-10 rounded-xl text-slate-400 hover:bg-slate-700 flex items-center justify-center transition-colors"
+          >
             <HiStatusOnline className="text-xl" />
           </button>
           <button className="w-10 h-10 rounded-xl text-slate-400 hover:bg-slate-700 flex items-center justify-center transition-colors">

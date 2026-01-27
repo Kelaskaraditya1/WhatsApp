@@ -11,6 +11,7 @@ import com.starkindustries.whatsapp_backend.chatRoom.model.ChatRoom;
 @Repository
 public interface ChatRoomRepository extends MongoRepository<ChatRoom,String> {
 
-    Optional<ChatRoom> findBySenderId(String senderId);
+    public Optional<ChatRoom> findBySenderId(String senderId);
+    public boolean existsBySenderId(String senderId);
     
 }

@@ -5,6 +5,7 @@ import PhoneVerificationPage from './pages/PhoneVerificationPage';
 import SignupDetailsPage from './pages/SignupDetailsPage';
 import HomePage from './pages/HomePage';
 import OAuthCallbackPage from './pages/OAuthCallbackPage';
+import StatusPage from './pages/StatusPage';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
       <Route path="/signup/details" element={<SignupDetailsPage />} />
       <Route path="/home" element={<HomePage />} />
       <Route path="/oauth-callback" element={<OAuthCallbackPage />} />
+      <Route path="/status" element={<StatusPage />} />
     </Routes>
   );
 }
