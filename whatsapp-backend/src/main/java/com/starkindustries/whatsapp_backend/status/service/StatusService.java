@@ -6,6 +6,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import com.starkindustries.whatsapp_backend.authentication.model.Users;
@@ -16,6 +17,7 @@ import com.starkindustries.whatsapp_backend.exceptions.CustomException;
 import com.starkindustries.whatsapp_backend.status.dto.request.UploadStatusRequest;
 import com.starkindustries.whatsapp_backend.status.dto.response.GetStatusResponse;
 import com.starkindustries.whatsapp_backend.status.model.Status;
+import com.starkindustries.whatsapp_backend.status.model.Viewer;
 import com.starkindustries.whatsapp_backend.status.repository.StatusRepository;
 
 import io.jsonwebtoken.lang.Collections;
@@ -158,6 +160,34 @@ public class StatusService {
 
         return listOfStatus;
         
+    }
+
+    public Status incrementStatusCount(String statusId, String userId){
+
+        if(!this.statusRepository.existsById(statusId)){
+            log.error("Status doesnot exist");
+            throw new CustomException(HttpStatus.BAD_REQUEST.value(),"Status does not exist");
+        }
+
+        if(!this.authenticationRepository.existsByUserId(userId)){
+            log.error("User does not exist");
+            throw new CustomException(HttpStatus.BAD_REQUEST.value(),"User does not exist");
+        }
+
+        Status status = this.statusRepository.findById(statusId).get();
+        Users users = this.authenticationRepository.findByUserId(userId).get();
+
+        Viewer viewer = Viewer.builder()
+        .userId(userId)
+        .username(users.getUsername())
+        .profilePicUrl(users.getProfilePicUrl())
+        .build();
+
+        if(status.addViewer(viewer))
+            status.incrementView();
+        
+        return this.statusRepository.save(status);
+
     }
     
 }

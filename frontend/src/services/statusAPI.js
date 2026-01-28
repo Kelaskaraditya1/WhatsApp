@@ -55,6 +55,13 @@ export const statusAPI = {
     });
   },
 
+  // Increment view count for a status
+  incrementViewCount: async (statusId, userId) => {
+    return apiRequest(`/status/increment/count/${statusId}/${userId}`, {
+      method: 'PUT',
+    });
+  },
+
   // Upload media file (reusing chat upload endpoint)
   uploadMedia: async (file) => {
     const url = `${API_BASE_URL}/chat/upload/media`;

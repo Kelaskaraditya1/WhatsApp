@@ -23,12 +23,29 @@ public class Status {
     private StatusType statusType;
     private String userId;
     private Long createdAt;
-    private List<String> viewers;
+    private int views;
+    private List<Viewer> viewers;
 
     public boolean isStatusFresh(){
 
         if((System.currentTimeMillis()-createdAt)>(1000L*60*60*24))
             return false;
+        return true;
+
+    }
+
+    public void incrementView(){
+        views++;
+    }
+
+    public boolean addViewer(Viewer viewer){
+
+        for(Viewer viewer1:viewers){
+            if(viewer1.getUserId().equals(viewer.getUserId()))
+                return false;
+        }
+
+        this.viewers.add(viewer);
         return true;
 
     }

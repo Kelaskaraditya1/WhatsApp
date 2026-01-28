@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -58,6 +59,25 @@ public class StatusController {
 
         List<GetStatusResponse> status = this.statusService.getAllStatus(userId);
         return ResponseEntity.status(HttpStatus.OK).body(status);
+
+    }
+
+    @PutMapping("/increment/count/{statusId}/{userId}")
+    public ResponseEntity<?> incrementStatusCount(
+        @PathVariable("statusId") String statusId,
+        @PathVariable("userId") String userId
+    ){
+
+        if(statusId == null || statusId.isEmpty() || statusId.isEmpty())
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Enter proper status Id");
+
+        else if(userId == null || userId.isEmpty() || userId.isBlank())
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Emter proper user Id");
+
+        Status status = this.statusService.incrementStatusCount(statusId, userId);
+        if(status!=null)
+            return ResponseEntity.status(HttpStatus.OK).body("view added sucessfully!! , total view cont: "+status.getViews());
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to add view to status");
 
     }
     

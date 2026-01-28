@@ -40,6 +40,10 @@ const StatusPage = () => {
   const [selectedUserStatus, setSelectedUserStatus] = useState(null); // GetStatusResponse
   const [currentStatusIndex, setCurrentStatusIndex] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [viewedStatuses, setViewedStatuses] = useState(new Set()); // Track viewed status IDs
+  
+  // Viewers bottom sheet state
+  const [showViewersSheet, setShowViewersSheet] = useState(false);
   
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -116,6 +120,24 @@ const StatusPage = () => {
       }
     };
   }, [selectedUserStatus, currentStatusIndex]);
+
+  // Track view count when viewing others' statuses
+  useEffect(() => {
+    if (!selectedUserStatus || !user) return;
+    if (selectedUserStatus.isMine) return; // Don't track own views
+
+    const currentStatus = selectedUserStatus.statusList[currentStatusIndex];
+    if (!currentStatus) return;
+
+    const statusId = currentStatus.id;
+    if (viewedStatuses.has(statusId)) return; // Already tracked
+
+    // Mark as viewed and call API
+    setViewedStatuses(prev => new Set([...prev, statusId]));
+    statusAPI.incrementViewCount(statusId, user.userId).catch(err => {
+      console.error('Failed to increment view count:', err);
+    });
+  }, [selectedUserStatus, currentStatusIndex, user, viewedStatuses]);
 
   // Get my status from the list
   const myStatus = statuses.find(s => s.isMine);
@@ -219,6 +241,8 @@ const StatusPage = () => {
 
   // Open status viewer
   const handleViewStatus = (userStatus) => {
+    console.log('Viewing status:', userStatus);
+    console.log('isMine:', userStatus.isMine);
     setSelectedUserStatus(userStatus);
     setCurrentStatusIndex(0);
     setProgress(0);
@@ -455,125 +479,130 @@ const StatusPage = () => {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col relative bg-slate-900">
         {selectedUserStatus ? (
-          /* Status Viewer */
-          <div className="absolute inset-0 bg-black z-50 flex flex-col">
-            {/* Progress Bars */}
-            <div className="flex gap-1 p-2">
-              {selectedUserStatus.statusList.map((_, index) => (
-                <div key={index} className="flex-1 h-1 bg-slate-700 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-white transition-all duration-100"
-                    style={{
-                      width: index < currentStatusIndex 
-                        ? '100%' 
-                        : index === currentStatusIndex 
-                          ? `${progress}%` 
-                          : '0%'
+          /* Status Viewer - Phone-like container */
+          <div className="absolute inset-0 bg-black/95 z-50 flex items-center justify-center">
+            {/* Phone-like container */}
+            <div className="relative w-full max-w-md h-full max-h-[90vh] bg-slate-900 rounded-2xl overflow-hidden shadow-2xl flex flex-col mx-4">
+              {/* Progress Bars */}
+              <div className="flex gap-1 p-3 pt-4">
+                {selectedUserStatus.statusList.map((_, index) => (
+                  <div key={index} className="flex-1 h-1 bg-slate-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-white transition-all duration-100"
+                      style={{
+                        width: index < currentStatusIndex 
+                          ? '100%' 
+                          : index === currentStatusIndex 
+                            ? `${progress}%` 
+                            : '0%'
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* Header */}
+              <div className="flex items-center gap-3 px-4 py-2">
+                {selectedUserStatus.profilePicUrl ? (
+                  <img
+                    src={selectedUserStatus.profilePicUrl}
+                    alt={selectedUserStatus.username}
+                    className="w-10 h-10 rounded-full object-cover ring-2 ring-emerald-500"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-bold ring-2 ring-emerald-500">
+                    {getInitials(selectedUserStatus.username)}
+                  </div>
+                )}
+                <div className="flex-1">
+                  <p className="text-white font-medium">{selectedUserStatus.username}</p>
+                  <p className="text-slate-400 text-sm">
+                    {formatTimeAgo(selectedUserStatus.statusList[currentStatusIndex]?.createdAt)}
+                  </p>
+                </div>
+                <button
+                  onClick={handleCloseViewer}
+                  className="p-2 text-white hover:bg-slate-800 rounded-full transition-colors"
+                >
+                  <MdClose className="text-2xl" />
+                </button>
+              </div>
+
+              {/* Status Content */}
+              <div className="flex-1 min-h-0 flex items-center justify-center relative bg-black overflow-hidden">
+                {/* Status Media */}
+                {selectedUserStatus.statusList[currentStatusIndex]?.statusType === 'VIDEO' ? (
+                  <video
+                    ref={videoRef}
+                    src={selectedUserStatus.statusList[currentStatusIndex]?.mediaUrl}
+                    className="max-w-full max-h-full object-contain"
+                    autoPlay
+                    onEnded={handleNextStatus}
+                    onTimeUpdate={(e) => {
+                      const video = e.target;
+                      if (video.duration) {
+                        setProgress((video.currentTime / video.duration) * 100);
+                      }
                     }}
                   />
-                </div>
-              ))}
-            </div>
-
-            {/* Header */}
-            <div className="flex items-center gap-3 p-4">
-              {selectedUserStatus.profilePicUrl ? (
-                <img
-                  src={selectedUserStatus.profilePicUrl}
-                  alt={selectedUserStatus.username}
-                  className="w-10 h-10 rounded-full object-cover ring-2 ring-emerald-500"
-                />
-              ) : (
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-bold ring-2 ring-emerald-500">
-                  {getInitials(selectedUserStatus.username)}
-                </div>
-              )}
-              <div className="flex-1">
-                <p className="text-white font-medium">{selectedUserStatus.username}</p>
-                <p className="text-slate-400 text-sm">
-                  {formatTimeAgo(selectedUserStatus.statusList[currentStatusIndex]?.createdAt)}
-                </p>
+                ) : selectedUserStatus.statusList[currentStatusIndex]?.statusType === 'TEXT' ? (
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-emerald-600 to-teal-700 p-8">
+                    <p className="text-white text-2xl font-medium text-center">
+                      {selectedUserStatus.statusList[currentStatusIndex]?.caption}
+                    </p>
+                  </div>
+                ) : (
+                  <img
+                    src={selectedUserStatus.statusList[currentStatusIndex]?.mediaUrl}
+                    alt="Status"
+                    className="max-w-full max-h-full object-contain"
+                  />
+                )}
               </div>
-              <button
-                onClick={handleCloseViewer}
-                className="p-2 text-white hover:bg-slate-800 rounded-full transition-colors"
-              >
-                <MdClose className="text-2xl" />
-              </button>
-            </div>
 
-            {/* Status Content */}
-            <div className="flex-1 flex items-center justify-center relative">
-              {/* Previous Button */}
-              {currentStatusIndex > 0 && (
-                <button
-                  onClick={handlePrevStatus}
-                  className="absolute left-4 p-3 bg-slate-800/80 hover:bg-slate-700 rounded-full transition-colors z-10"
-                >
-                  <MdArrowBack className="text-white text-2xl" />
-                </button>
-              )}
-
-              {/* Status Media */}
-              {selectedUserStatus.statusList[currentStatusIndex]?.statusType === 'VIDEO' ? (
-                <video
-                  ref={videoRef}
-                  src={selectedUserStatus.statusList[currentStatusIndex]?.mediaUrl}
-                  className="max-h-full max-w-full object-contain"
-                  autoPlay
-                  onEnded={handleNextStatus}
-                  onTimeUpdate={(e) => {
-                    const video = e.target;
-                    if (video.duration) {
-                      setProgress((video.currentTime / video.duration) * 100);
-                    }
-                  }}
-                />
-              ) : selectedUserStatus.statusList[currentStatusIndex]?.statusType === 'TEXT' ? (
-                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-emerald-600 to-teal-700 p-8">
-                  <p className="text-white text-3xl font-medium text-center">
+              {/* Caption (for non-text statuses) */}
+              {selectedUserStatus.statusList[currentStatusIndex]?.statusType !== 'TEXT' && 
+               selectedUserStatus.statusList[currentStatusIndex]?.caption && (
+                <div className="px-4 py-3 bg-black/80 flex-shrink-0">
+                  <p className="text-white text-center text-sm">
                     {selectedUserStatus.statusList[currentStatusIndex]?.caption}
                   </p>
                 </div>
-              ) : (
-                <img
-                  src={selectedUserStatus.statusList[currentStatusIndex]?.mediaUrl}
-                  alt="Status"
-                  className="max-h-full max-w-full object-contain"
-                />
               )}
 
-              {/* Next Button */}
-              {currentStatusIndex < selectedUserStatus.statusList.length - 1 && (
+              {/* View count - Only show for logged-in user's own status */}
+              {selectedUserStatus.userId === user?.userId && (
                 <button
-                  onClick={handleNextStatus}
-                  className="absolute right-4 p-3 bg-slate-800/80 hover:bg-slate-700 rounded-full transition-colors z-10"
+                  onClick={() => setShowViewersSheet(true)}
+                  className="w-full px-4 py-4 flex justify-center bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer flex-shrink-0 border-t border-slate-700"
                 >
-                  <MdArrowForward className="text-white text-2xl" />
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <MdVisibility className="text-xl" />
+                    <span className="text-sm font-medium">
+                      {selectedUserStatus.statusList[currentStatusIndex]?.views || 0} views
+                    </span>
+                    <span className="text-xs text-slate-400">• Tap to see viewers</span>
+                  </div>
                 </button>
               )}
             </div>
 
-            {/* Caption (for non-text statuses) */}
-            {selectedUserStatus.statusList[currentStatusIndex]?.statusType !== 'TEXT' && 
-             selectedUserStatus.statusList[currentStatusIndex]?.caption && (
-              <div className="p-4 bg-black/50">
-                <p className="text-white text-center">
-                  {selectedUserStatus.statusList[currentStatusIndex]?.caption}
-                </p>
-              </div>
+            {/* Navigation Buttons - Outside the phone container */}
+            {currentStatusIndex > 0 && (
+              <button
+                onClick={handlePrevStatus}
+                className="absolute left-4 p-3 bg-slate-800/80 hover:bg-slate-700 rounded-full transition-colors z-10"
+              >
+                <MdArrowBack className="text-white text-2xl" />
+              </button>
             )}
-
-            {/* View count (for own statuses) */}
-            {selectedUserStatus.isMine && (
-              <div className="p-4 flex justify-center">
-                <div className="flex items-center gap-2 text-slate-400">
-                  <MdVisibility className="text-xl" />
-                  <span>
-                    {selectedUserStatus.statusList[currentStatusIndex]?.viewers?.length || 0} views
-                  </span>
-                </div>
-              </div>
+            {currentStatusIndex < selectedUserStatus.statusList.length - 1 && (
+              <button
+                onClick={handleNextStatus}
+                className="absolute right-4 p-3 bg-slate-800/80 hover:bg-slate-700 rounded-full transition-colors z-10"
+              >
+                <MdArrowForward className="text-white text-2xl" />
+              </button>
             )}
           </div>
         ) : (
@@ -768,6 +797,72 @@ const StatusPage = () => {
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Viewers Bottom Sheet */}
+      {showViewersSheet && selectedUserStatus && (
+        <div 
+          className="fixed inset-0 bg-black/70 z-[60] flex items-end justify-center"
+          onClick={() => setShowViewersSheet(false)}
+        >
+          <div 
+            className="w-full max-w-md bg-slate-800 rounded-t-3xl max-h-[70vh] flex flex-col animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Handle bar */}
+            <div className="flex justify-center py-3">
+              <div className="w-12 h-1.5 bg-slate-600 rounded-full" />
+            </div>
+
+            {/* Header */}
+            <div className="px-6 pb-4 border-b border-slate-700 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white">Viewed by</h3>
+                <p className="text-slate-400 text-sm">
+                  {selectedUserStatus.statusList[currentStatusIndex]?.views || 0} views
+                </p>
+              </div>
+              <button
+                onClick={() => setShowViewersSheet(false)}
+                className="p-2 text-slate-400 hover:text-white transition-colors"
+              >
+                <MdClose className="text-xl" />
+              </button>
+            </div>
+
+            {/* Viewers List */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {selectedUserStatus.statusList[currentStatusIndex]?.viewers?.length > 0 ? (
+                selectedUserStatus.statusList[currentStatusIndex].viewers.map((viewer, index) => (
+                  <div key={index} className="flex items-center gap-3 py-3 px-2 hover:bg-slate-700/50 rounded-xl transition-colors">
+                    {viewer.profilePicUrl ? (
+                      <img
+                        src={viewer.profilePicUrl}
+                        alt={viewer.username}
+                        className="w-12 h-12 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center text-white font-bold">
+                        {viewer.username?.charAt(0)?.toUpperCase() || '?'}
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <p className="text-white font-medium">{viewer.username}</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                  <MdVisibility className="text-4xl mb-2 opacity-50" />
+                  <p className="text-center">No views yet</p>
+                  <p className="text-center text-sm text-slate-500 mt-1">
+                    Views will appear here
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
