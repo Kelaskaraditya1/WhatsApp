@@ -28,6 +28,7 @@ import {
   MdGroup,
   MdGroupAdd,
   MdBlock,
+  MdVideoCall,
 } from 'react-icons/md';
 import { HiStatusOnline } from 'react-icons/hi';
 
@@ -760,7 +761,10 @@ const HomePage = () => {
           <button className="w-10 h-10 rounded-xl text-slate-400 hover:bg-slate-700 flex items-center justify-center transition-colors">
             <MdPeople className="text-xl" />
           </button>
-          <button className="w-10 h-10 rounded-xl text-slate-400 hover:bg-slate-700 flex items-center justify-center transition-colors">
+          <button 
+            onClick={() => navigate('/calls')}
+            className="w-10 h-10 rounded-xl text-slate-400 hover:bg-slate-700 flex items-center justify-center transition-colors"
+          >
             <MdCall className="text-xl" />
           </button>
         </nav>
@@ -915,6 +919,96 @@ const HomePage = () => {
                   )}
                 </p>
               </div>
+
+              {/* Call buttons - Only for DM chats */}
+              {selectedChat.type === 'dm' && (
+                <div className="ml-auto flex items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      const otherUserId = selectedChat.data.userId;
+                      // Log the call to backend
+                      await chatAPI.addCall({
+                        callerId: user.userId,
+                        receiverId: otherUserId,
+                        callType: 'INDIVISUAL',
+                        callMediaType: 'AUDIO'
+                      });
+                      // Navigate to call page
+                      const sortedIds = [user.userId, otherUserId].sort();
+                      const roomId = `call_${sortedIds[0]}_${sortedIds[1]}`;
+                      navigate(`/call/${roomId}?type=audio&calleeName=${encodeURIComponent(getChatName(selectedChat))}`);
+                    }}
+                    className="p-2 text-slate-400 hover:text-emerald-500 hover:bg-slate-700 rounded-full transition-colors"
+                    title="Audio Call"
+                  >
+                    <MdCall className="text-xl" />
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const otherUserId = selectedChat.data.userId;
+                      // Log the call to backend
+                      await chatAPI.addCall({
+                        callerId: user.userId,
+                        receiverId: otherUserId,
+                        callType: 'INDIVISUAL',
+                        callMediaType: 'VIDEO'
+                      });
+                      // Navigate to call page
+                      const sortedIds = [user.userId, otherUserId].sort();
+                      const roomId = `call_${sortedIds[0]}_${sortedIds[1]}`;
+                      navigate(`/call/${roomId}?type=video&calleeName=${encodeURIComponent(getChatName(selectedChat))}`);
+                    }}
+                    className="p-2 text-slate-400 hover:text-emerald-500 hover:bg-slate-700 rounded-full transition-colors"
+                    title="Video Call"
+                  >
+                    <MdVideoCall className="text-2xl" />
+                  </button>
+                </div>
+              )}
+
+              {/* Call buttons - For accepted Group chats */}
+              {selectedChat.type === 'group' && selectedChat.status === 'accepted' && (
+                <div className="ml-auto flex items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      const groupId = selectedChat.data.groupId;
+                      // Log the call to backend
+                      await chatAPI.addCall({
+                        callerId: user.userId,
+                        groupId: groupId,
+                        callType: 'GROUP',
+                        callMediaType: 'AUDIO'
+                      });
+                      // Navigate to call page with group room ID
+                      const roomId = `group_call_${groupId}`;
+                      navigate(`/call/${roomId}?type=audio&calleeName=${encodeURIComponent(getChatName(selectedChat))}&isGroup=true`);
+                    }}
+                    className="p-2 text-slate-400 hover:text-emerald-500 hover:bg-slate-700 rounded-full transition-colors"
+                    title="Audio Call"
+                  >
+                    <MdCall className="text-xl" />
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const groupId = selectedChat.data.groupId;
+                      // Log the call to backend
+                      await chatAPI.addCall({
+                        callerId: user.userId,
+                        groupId: groupId,
+                        callType: 'GROUP',
+                        callMediaType: 'VIDEO'
+                      });
+                      // Navigate to call page with group room ID
+                      const roomId = `group_call_${groupId}`;
+                      navigate(`/call/${roomId}?type=video&calleeName=${encodeURIComponent(getChatName(selectedChat))}&isGroup=true`);
+                    }}
+                    className="p-2 text-slate-400 hover:text-emerald-500 hover:bg-slate-700 rounded-full transition-colors"
+                    title="Video Call"
+                  >
+                    <MdVideoCall className="text-2xl" />
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Messages */}

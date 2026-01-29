@@ -148,6 +148,21 @@ export const chatAPI = {
       method: 'GET',
     });
   },
+
+  // Add a call record
+  addCall: async (callData) => {
+    return apiRequest('/call/add', {
+      method: 'POST',
+      body: JSON.stringify(callData),
+    });
+  },
+
+  // Get call history for a user
+  getCalls: async (userId) => {
+    return apiRequest(`/call/get/${userId}`, {
+      method: 'GET',
+    });
+  },
 };
 
 // Helper function to generate chatRoomId (sorted alphabetically)
