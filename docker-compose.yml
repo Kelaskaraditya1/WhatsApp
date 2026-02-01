@@ -1,0 +1,225 @@
+# # ================================================
+# # Docker Compose - WhatsApp Clone
+# # Full Stack: Frontend + Backend + MongoDB + Redis
+# # ================================================
+
+# services:
+#   # MongoDB Database
+#   mongodb:
+#     image: mongo:7.0
+#     container_name: whatsapp-mongodb
+#     restart: unless-stopped
+#     ports:
+#       - "${MONGO_PORT:-27017}:27017"
+#     environment:
+#       - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USERNAME:-admin}
+#       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD:-password}
+#       - MONGO_INITDB_DATABASE=whatsapp
+#     volumes:
+#       - mongodb_data:/data/db
+#       - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+#     networks:
+#       - whatsapp-network
+#     healthcheck:
+#       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 5
+#       start_period: 30s
+
+#   # Redis Cache
+#   redis:
+#     image: redis:7.2-alpine
+#     container_name: whatsapp-redis
+#     restart: unless-stopped
+#     ports:
+#       - "${REDIS_PORT:-6379}:6379"
+#     command: redis-server --appendonly yes
+#     volumes:
+#       - redis_data:/data
+#     networks:
+#       - whatsapp-network
+#     healthcheck:
+#       test: ["CMD", "redis-cli", "ping"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 5
+
+#   # Spring Boot Backend
+#   backend:
+#     build:
+#       context: ./whatsapp-backend
+#       dockerfile: Dockerfile
+#     container_name: whatsapp-backend
+#     restart: unless-stopped
+#     ports:
+#       - "${SERVER_PORT:-8080}:8080"
+#     env_file:
+#       - .env
+#     environment:
+#       # Override Database Configuration for Docker (must use DATABASE_URL as that's what application.properties reads)
+#       - DATABASE_URL=mongodb://admin:password@mongodb:27017/whatsapp?authSource=admin
+#       # Override Redis Configuration for Docker
+#       - REDIS_HOST=redis
+#       - REDIS_PORT=6379
+#       - REDIS_DB=0
+#     depends_on:
+#       mongodb:
+#         condition: service_healthy
+#       redis:
+#         condition: service_healthy
+#     networks:
+#       - whatsapp-network
+#     healthcheck:
+#       test: ["CMD", "sh", "-c", "wget -q --spider http://localhost:8080/auth/health || exit 1"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 5
+#       start_period: 90s
+
+#   # React Frontend
+#   frontend:
+#     build:
+#       context: ./frontend
+#       dockerfile: Dockerfile
+#       args:
+#         - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8080}
+#         - VITE_GOOGLE_OAUTH_URL=${VITE_GOOGLE_OAUTH_URL:-http://localhost:8080/oauth2/authorization/google}
+#         - VITE_ZEGO_APP_ID=${VITE_ZEGO_APP_ID}
+#         - VITE_ZEGO_SERVER_SECRET=${VITE_ZEGO_SERVER_SECRET}
+#     container_name: whatsapp-frontend
+#     restart: unless-stopped
+#     ports:
+#       - "${FRONTEND_PORT:-3000}:80"
+#     depends_on:
+#       backend:
+#         condition: service_healthy
+#     networks:
+#       - whatsapp-network
+#     healthcheck:
+#       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 3
+
+# networks:
+#   whatsapp-network:
+#     driver: bridge
+
+# volumes:
+#   mongodb_data:
+#   redis_data:
+
+
+# ================================================
+# Docker Compose - WhatsApp Clone (PRODUCTION READY)
+# Full Stack: Frontend + Backend + MongoDB + Redis
+# ================================================
+
+services:
+  # MongoDB Database
+  whatsapp-mongodb:
+    image: mongo:7.0
+    container_name: whatsapp-mongodb
+    restart: unless-stopped
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USERNAME:-admin}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD:-password}
+      - MONGO_INITDB_DATABASE=whatsapp
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - whatsapp-network
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'db.runCommand(\"ping\").ok' | mongosh localhost:27017/test --quiet"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # Redis Cache
+  redis:
+    image: redis:7.2-alpine
+    container_name: whatsapp-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - whatsapp-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # Spring Boot Backend
+  backend:
+    build:
+      context: ./whatsapp-backend
+      dockerfile: Dockerfile
+    container_name: whatsapp-backend
+    restart: unless-stopped
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    env_file:
+      - .env
+    environment:
+      # ✅ FORCE DOCKER CONNECTION (overrides .env)
+      # CRITICAL: Use service name 'whatsapp-mongodb', NOT localhost
+      - DATABASE_URL=mongodb://${MONGO_ROOT_USERNAME:-admin}:${MONGO_ROOT_PASSWORD:-password}@whatsapp-mongodb:27017/whatsapp?authSource=admin
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+    depends_on:
+      whatsapp-mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - whatsapp-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8080}
+        - VITE_GOOGLE_OAUTH_URL=${VITE_GOOGLE_OAUTH_URL:-http://localhost:8080/oauth2/authorization/google}
+        - VITE_ZEGO_APP_ID=${VITE_ZEGO_APP_ID}
+        - VITE_ZEGO_SERVER_SECRET=${VITE_ZEGO_SERVER_SECRET}
+    container_name: whatsapp-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - whatsapp-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  whatsapp-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+  redis_data:

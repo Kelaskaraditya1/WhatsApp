@@ -72,6 +72,15 @@ public class AuthenticationController {
 
     }
 
+    @GetMapping("/health")
+    public ResponseEntity<?> health(){
+        Map<String,Object> response = new HashMap<>();
+        response.put("status", "UP");
+        response.put("timestamp", System.currentTimeMillis());
+        return ResponseEntity.ok(response);
+    }
+
+
 @PostMapping(value = "/signup", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 public ResponseEntity<?> signup(
     @RequestPart("data") String jsonData,     // JSON as string  
